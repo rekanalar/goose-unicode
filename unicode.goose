@@ -1,0 +1,92 @@
+// unicode - Unicode text handling for Goose.
+//
+// The package validates UTF-8 and reports the offset of the first bad
+// byte. It converts text to the four normalization forms. It converts
+// case and folds case for caseless compare. It gives the general category
+// and the combining class of a code point. It splits text into grapheme
+// clusters. The tables hold Unicode 17.0.0.
+//
+// Every call checks the length of its input before any other work. Every
+// call that writes text checks the length of its result. A fault holds a
+// code and an offset. It never holds bytes of the input.
+namespace unicode;
+
+import std;
+import unicode_data;
+import normalize_data;
+import grapheme_data;
+import table;
+import utf8;
+import norm;
+import casing;
+import property;
+import grapheme;
+
+// The Unicode version of the tables.
+const UNICODE_VERSION: u8[] = "17.0.0";
+
+// ---- fault codes ----------------------------------------------------
+const OK: i64 = 0;
+const ERR_BAD_UTF8: i64 = 1;       // the bytes are not well formed UTF-8
+const ERR_BAD_CODEPOINT: i64 = 2;  // a surrogate, a negative value or a value above 0x10FFFF
+const ERR_BAD_FORM: i64 = 3;       // the normalization form is unknown
+const ERR_TOO_LONG: i64 = 4;       // the input or the result is above its bound
+const ERR_BAD_ARG: i64 = 5;        // an argument is out of range
+
+// ---- bounds ---------------------------------------------------------
+const MAX_INPUT: i64 = 1048576;    // bytes of input
+const MAX_OUTPUT: i64 = 4194304;   // bytes of result
+
+// ---- normalization forms --------------------------------------------
+const FORM_NFC: i64 = 0;
+const FORM_NFD: i64 = 1;
+const FORM_NFKC: i64 = 2;
+const FORM_NFKD: i64 = 3;
+
+// ---- general categories ---------------------------------------------
+const CAT_CN: i64 = 0;   // unassigned
+const CAT_LU: i64 = 1;   // uppercase letter
+const CAT_LL: i64 = 2;   // lowercase letter
+const CAT_LT: i64 = 3;   // titlecase letter
+const CAT_LM: i64 = 4;   // modifier letter
+const CAT_LO: i64 = 5;   // other letter
+const CAT_MN: i64 = 6;   // nonspacing mark
+const CAT_MC: i64 = 7;   // spacing combining mark
+const CAT_ME: i64 = 8;   // enclosing mark
+const CAT_ND: i64 = 9;   // decimal number
+const CAT_NL: i64 = 10;  // letter number
+const CAT_NO: i64 = 11;  // other number
+const CAT_PC: i64 = 12;  // connector punctuation
+const CAT_PD: i64 = 13;  // dash punctuation
+const CAT_PS: i64 = 14;  // open punctuation
+const CAT_PE: i64 = 15;  // close punctuation
+const CAT_PI: i64 = 16;  // initial punctuation
+const CAT_PF: i64 = 17;  // final punctuation
+const CAT_PO: i64 = 18;  // other punctuation
+const CAT_SM: i64 = 19;  // math symbol
+const CAT_SC: i64 = 20;  // currency symbol
+const CAT_SK: i64 = 21;  // modifier symbol
+const CAT_SO: i64 = 22;  // other symbol
+const CAT_ZS: i64 = 23;  // space separator
+const CAT_ZL: i64 = 24;  // line separator
+const CAT_ZP: i64 = 25;  // paragraph separator
+const CAT_CC: i64 = 26;  // control
+const CAT_CF: i64 = 27;  // format
+const CAT_CS: i64 = 28;  // surrogate
+const CAT_CO: i64 = 29;  // private use
+
+// ---- grapheme break classes ------------------------------------------
+const GB_OTHER: i64 = 0;
+const GB_CR: i64 = 1;
+const GB_LF: i64 = 2;
+const GB_CONTROL: i64 = 3;
+const GB_EXTEND: i64 = 4;
+const GB_ZWJ: i64 = 5;
+const GB_REGIONAL_INDICATOR: i64 = 6;
+const GB_PREPEND: i64 = 7;
+const GB_SPACINGMARK: i64 = 8;
+const GB_L: i64 = 9;
+const GB_V: i64 = 10;
+const GB_T: i64 = 11;
+const GB_LV: i64 = 12;
+const GB_LVT: i64 = 13;

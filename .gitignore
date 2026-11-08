@@ -5,3 +5,8 @@
 *.a
 /build/
 /out/
+
+# Scratch files of the test scripts
+__pycache__/
+*.pyc
+test-output.txt

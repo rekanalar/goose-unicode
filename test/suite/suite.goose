@@ -1,0 +1,17 @@
+// The test suites of the package. test/run.goose runs them.
+namespace suite;
+
+import std;
+import unicode from "../..";
+import util;
+import norm_cases;
+import tricky_cases;
+import grapheme_cases;
+import property_cases;
+import exclusion_cases;
+import utf8_suite;
+import normalize_suite;
+import case_suite;
+import property_suite;
+import grapheme_suite;
+import hostile_suite;

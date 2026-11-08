@@ -1,0 +1,25 @@
+The data tables of this package come from the Unicode Character Database.
+
+The Unicode Character Database files carry the Unicode License. The
+license covers the data files and the software of the Unicode
+Consortium. The license text is at
+https://www.unicode.org/license.txt
+
+The tables are built by the scripts under test/. Each script reads the
+files of the Unicode Character Database 17.0.0 and writes numbers only
+into the package.
+
+The files of the Character Database that the scripts read:
+
+  UnicodeData.txt
+  CaseFolding.txt
+  CompositionExclusions.txt
+  DerivedNormalizationProps.txt
+  GraphemeBreakProperty.txt
+  GraphemeBreakTest.txt
+  emoji-data.txt
+  NormalizationTest.txt
+
+The scripts check each table against a second source. The second source
+is the Go standard library, the Go package golang.org/x/text/unicode/norm
+and Node with ICU. The scripts fail when the sources differ.
