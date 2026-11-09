@@ -22,7 +22,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.1.0";
+import unicode from "rekanalar/goose-unicode@v0.2.0";
 ```
 
 ## API
