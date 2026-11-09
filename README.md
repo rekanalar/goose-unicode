@@ -11,6 +11,10 @@ converts case and folds case for caseless compare. It gives the general
 category and the combining class of a code point. It splits text into
 grapheme clusters. Pure Goose, no C.
 
+The package also gives the script, the width and the class of a code
+point. It gives the mirror flag, the numeric value and the name too.
+The name holds for every code point that the standard names.
+
 The tables hold Unicode 17.0.0.
 
 ## Install
@@ -30,12 +34,24 @@ import unicode from "rekanalar/goose-unicode@v0.1.0";
 | `utf8_encode(out, cp)` | writes the UTF-8 form of one code point; refuses a surrogate and a value above U+10FFFF |
 | `normalize(out, form, s)` | writes the text in the given form into the buffer of the caller |
 | `is_normalized(form, s)` | true when the text is already in the given form |
-| `to_upper(out, s)` | writes the text in upper case |
-| `to_lower(out, s)` | writes the text in lower case |
+| `to_upper(out, s)` | writes the text in upper case with the simple mappings |
+| `to_lower(out, s)` | writes the text in lower case with the simple mappings |
 | `fold_case(out, s)` | writes the text in its case fold, for caseless compare |
+| `to_upper_full(out, s)` | writes the text in upper case with the full mappings |
+| `to_lower_full(out, s)` | writes the text in lower case with the full mappings and the final sigma |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
 | `category_name(cp)` | the two letter name of the category, such as `Lu` |
 | `combining_class(cp)` | the canonical combining class of a code point, from 0 to 240 |
+| `script(cp)` | the script of a code point, as a `SCRIPT_` constant |
+| `script_name(cp)` | the name of the script, such as `Latin` |
+| `width(cp)` | the East Asian width of a code point, as a `WIDTH_` constant |
+| `width_name(cp)` | the name of the width, such as `Wide` |
+| `bidi_class(cp)` | the bidirectional class of a code point, as a `BIDI_` constant |
+| `bidi_class_name(cp)` | the name of the class, such as `L` or `AL` |
+| `mirrored(cp)` | true when the code point is mirrored |
+| `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
+| `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
+| `name(cp)` | the name of a code point in the Character Database; no name gives the empty slice |
 | `grapheme_count(s)` | the number of clusters that a user sees in the text |
 | `grapheme_next(s, at)` | the end of the cluster that starts at the byte offset; gives the code and the end |
 | `grapheme_offsets(out, s)` | copies the start offset of every cluster into the buffer of the caller |
@@ -44,9 +60,10 @@ The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
 general category is one of `CAT_CN`, `CAT_LU`, `CAT_LL` and the other 26
 constants of the package.
 
-Every call that writes text clears the buffer of the caller first, except `utf8_encode`, which appends. Every
-call that reads text gives a fault code and the byte offset of the first
-malformed byte. The offset is minus one when the call succeeds.
+Every call that writes text clears the buffer of the caller first, except
+`utf8_encode`, which appends. Every call that reads text gives a fault code
+and the byte offset of the first malformed byte. The offset is minus one
+when the call succeeds. A fault leaves the buffer empty.
 
 ```goose
 var out: u8[>..] = [];
@@ -79,6 +96,38 @@ var out: u8[>..] = [];
 unicode::fold_case(out, "Straße");   // strasse
 ```
 
+The `to_upper_full` and `to_lower_full` calls use the full mappings. The
+German sharp s gives two letters. The rule of the final sigma holds in
+the lower case. A sigma at the end of a word gives the final sigma. The
+package applies no language specific rule. It gives no Turkish or
+Lithuanian form.
+
+```goose
+var out: u8[>..] = [];
+unicode::to_upper_full(out, "Straße");   // STRASSE
+unicode::to_lower_full(out, "ΟΟΣ ΟΣ");   // οος ος
+```
+
+## Properties
+
+The property calls take one code point. Each lookup is a binary search
+over a table of the standard. A code point outside U+0000 to U+10FFFF
+takes the default of the property. The default is the unknown script and
+the neutral width. It is also the right to left class, no mirror flag, no
+value and no name.
+
+The name call also builds the names that the standard builds from a rule.
+The CJK, Tangut, Nushu and Khitan ideograph names are the prefix and the
+hex form. The Hangul syllable names come from the short names of the
+three jamo.
+
+```goose
+print(unicode::script_name(0x6F22));   // Han
+print(unicode::name(0xAC00));          // HANGUL SYLLABLE GA
+let num, den = unicode::numeric_value(0xBD);
+print(num, "/", den);                  // 1/2
+```
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -94,26 +143,23 @@ print(count);   // 2
 
 ## Limits
 
-- The package holds no scripts, no East Asian width and no character
-  names. It holds no bidirectional classes, no mirrored flag and no
-  numeric values. Python `unicodedata` gives the scripts, the width, the
-  names, the classes, the flag and the numeric values. Node gives the
-  scripts through the property escapes of a regular expression. Go holds
-  the width in `golang.org/x/text/width` and the scripts in
-  `golang.org/x/text`.
 - The package does not split text into sentences or words. Node holds
   `Intl.Segmenter`. Rust holds the `unicode-segmentation` crate. Python has
   no such call in the standard library.
-- The `to_upper` and `to_lower` calls use the simple mappings. They do not
-  use the full mappings that depend on the text around a letter, such as
-  the final sigma. Python `str.upper` and `str.lower` use the full
-  mappings. The full mappings change the length of the text.
+- The `bidi_class` call gives the class of one code point. The package does
+  not reorder a text by the bidirectional algorithm. Python has no such
+  call in the standard library. Go holds the algorithm in
+  `golang.org/x/text/unicode/bidi`. Rust holds the `unicode-bidi` crate.
 - The package reads UTF-8 only. It does not read UTF-16 or UTF-32. Go holds
   `unicode/utf16` and `unicode/utf32`. Rust holds the `encoding` crates.
-- The package does not give the width of the text for a terminal. Rust
-  holds the `unicode-width` crate. Go holds `golang.org/x/text/width`.
+- The package does not give the width of the text for a terminal. The East
+  Asian width is not a terminal width. Rust holds the `unicode-width`
+  crate. Go holds `golang.org/x/text/width`.
 - The package does not apply the identifier rules of a host language. The
   rules of a language depend on its own standard, not on Unicode alone.
+- The package applies no language specific case rule, so it gives no
+  Turkish dotless i and no Lithuanian dot above. Python and Node apply
+  these rules only with a language tag too.
 - The tables hold Unicode 17.0.0. Python `unicodedata` holds Unicode
   16.0.0, so it gives different answers for the code points that Unicode
   17 added. Node holds Unicode 17.0.0 through ICU 78. Go holds Unicode
@@ -137,6 +183,7 @@ beyond the reference libraries.
   `norm` have no such limit.
 - A fault holds a code and an offset. It never holds bytes of the input.
   The offset points at the first bad byte, and the caller holds the input.
+  A fault leaves the output buffer empty.
 - The sort of a run of combining marks uses a counting sort above 32
   marks. A hostile run of marks cannot take quadratic time. The insertion
   sort of the smaller runs keeps the order of equal classes.
@@ -145,6 +192,10 @@ beyond the reference libraries.
   replacement character U+FFFD for a bad byte. It cannot report the
   fault. A program that stores the replacement character loses the
   difference between a bad byte and a real U+FFFD.
+- Every property lookup is a binary search of bounded depth. A hostile
+  code point cannot make a lookup take longer than the depth of the
+  table. The test suite feeds 20,000 random code points around and
+  beyond the range of each lookup.
 
 These risks stay.
 
@@ -165,13 +216,15 @@ goose run test/run.goose
 goose run examples/normalize.goose
 goose run examples/grapheme.goose
 goose run examples/case.goose
+goose run examples/props.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
 files of the Unicode Character Database 17.0.0 and write numbers only.
 Each script checks its table against a second source and fails on a
-difference. The second source is the Go standard library, the Go package
-`golang.org/x/text/unicode/norm` and Node with ICU 78.
+difference. The sources are the Go standard library and the packages of
+`golang.org/x/text`. They are also the ICU library, Node with ICU 78 and
+Python.
 
 The scripts need the files of the Character Database. The first argument
 of each script names the directory that holds them. The default is the
@@ -185,6 +238,8 @@ python3 make_unicode_data.py
 python3 make_normalize_data.py
 python3 make_grapheme_data.py
 python3 make_vectors.py
+python3 make_props_data.py
+python3 make_case_full_data.py
 ```
 
 ## License

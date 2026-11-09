@@ -81,6 +81,15 @@ def unicode_data():
     return rows
 
 
+def string(name, text, comment=None):
+    out = []
+    if comment:
+        out.append("// " + comment)
+    out.append('const %s: u8[] = "%s";' % (name, text))
+    out.append("")
+    return "\n".join(out)
+
+
 def array(name, values, comment=None):
     out = []
     if comment:
@@ -93,9 +102,12 @@ def array(name, values, comment=None):
     return "\n".join(out)
 
 
-def write_goose(path, script, parts):
+def write_goose(path, script, parts, namespace="unicode"):
+    header = HEADER.format(version=VERSION, script=script)
+    if namespace != "unicode":
+        header = header.replace("namespace unicode;", "namespace %s;" % namespace)
     with open(path, "w", encoding="utf-8") as f:
-        f.write(HEADER.format(version=VERSION, script=script))
+        f.write(header)
         f.write("\n")
         f.write("\n".join(parts))
 

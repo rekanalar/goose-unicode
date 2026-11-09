@@ -21,3 +21,11 @@ fn find_exact(a: const i64[:], v: i64) -> i64 {
     if i >= 0 && a[i] == v { return i; }
     return -1;
 }
+
+// The index of the run that holds v, when the starts are sorted and the
+// ends are one per run. -1 when no run holds v.
+fn run_at(starts: const i64[:], ends: const i64[:], v: i64) -> i64 {
+    let i = last_at_or_below(starts, v);
+    if i >= 0 && v <= ends[i] { return i; }
+    return -1;
+}

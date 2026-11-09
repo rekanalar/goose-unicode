@@ -124,6 +124,75 @@ run_probe cluster_hangul grapheme.goose \
     'if prev == GB_L && (cur == GB_L || cur == GB_V || cur == GB_LV || cur == GB_LVT) { return true; }' \
     'if prev == GB_L && (cur == GB_V || cur == GB_LV || cur == GB_LVT) { return true; }'
 
+# The script lookup. The table gives the value.
+run_probe script props.goose \
+    'return SCRIPT_INDEX[i];' \
+    'return SCRIPT_INDEX[i + 1];'
+
+# The script run. The next run starts after the last code point.
+run_probe script_run test/suite/props_suite.goose \
+    'if k + 1 < unicode::SCRIPT_START.len { last = unicode::SCRIPT_START[k + 1] - 1; }' \
+    'if k + 1 < unicode::SCRIPT_START.len { last = unicode::SCRIPT_START[k + 1] - 2; }'
+
+# The width. The table gives the value.
+run_probe width props.goose \
+    'let i = run_at(WIDTH_START[..], WIDTH_END[..], cp);
+    if i >= 0 { return WIDTH_VAL[i]; }' \
+    'let i = run_at(WIDTH_START[..], WIDTH_END[..], cp);
+    if i >= 0 { return WIDTH_VAL[i] + 1; }'
+
+# The width default. A code point outside the range is neutral.
+run_probe width_default props.goose \
+    'if cp < 0 || cp > 0x10FFFF { return WIDTH_NEUTRAL; }' \
+    'if cp < 0 || cp > 0x10FFFF { return WIDTH_NARROW; }'
+
+# The class. The table gives the value.
+run_probe bidi_class props.goose \
+    'let i = run_at(BIDI_START[..], BIDI_END[..], cp);
+    if i >= 0 { return BIDI_VAL[i]; }' \
+    'let i = run_at(BIDI_START[..], BIDI_END[..], cp);
+    if i >= 0 { return BIDI_VAL[i] + 1; }'
+
+# The mirror partner. The partner is the code point plus the number.
+run_probe mirror props.goose \
+    'let i = run_at(MIRROR_START[..], MIRROR_END[..], cp);
+    if i >= 0 { return cp + MIRROR_DELTA[i]; }' \
+    'let i = run_at(MIRROR_START[..], MIRROR_END[..], cp);
+    if i >= 0 { return cp + MIRROR_DELTA[i] + 1; }'
+
+# The numeric value. The table gives the denominator.
+run_probe numeric props.goose \
+    'let i = run_at(NUM_START[..], NUM_END[..], cp);
+    if i >= 0 { return NUM_NUM[i], NUM_DEN[i]; }' \
+    'let i = run_at(NUM_START[..], NUM_END[..], cp);
+    if i >= 0 { return NUM_NUM[i], NUM_DEN[i] + 1; }'
+
+# The name. The table holds the code point of each name.
+run_probe name props.goose \
+    'let i = find_exact(NAME_START[..], cp);' \
+    'let i = find_exact(NAME_START[..], cp + 1);'
+
+# The full mapping. The table gives the result.
+run_probe full_case case_full.goose \
+    'let k = find_exact(cps, cp);' \
+    'let k = find_exact(cps, cp + 1);'
+
+# The final sigma. A sigma with no cased letter after it is final.
+run_probe final_sigma case_full.goose \
+    'return !cased_after;' \
+    'return cased_after;'
+
+# The input bound of the full case calls.
+run_probe full_input_bound case_full.goose \
+    'if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }' \
+    'if s.len > MAX_INPUT * 2 { return ERR_TOO_LONG, -1; }'
+
+# The output bound of the full case calls. A tight bound makes the
+# normal calls fault, so the test program fails.
+run_probe full_output_bound case_full.goose \
+    'if out.len > MAX_OUTPUT {' \
+    'if out.len > 8 {'
+
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi
 exit 0

@@ -1,15 +1,32 @@
 // The oracle for the table generators. It prints properties that the
-// Go standard library and golang.org/x/text hold. Each mode prints
-// plain text that the generators compare with their own tables.
+// Go standard library, golang.org/x/text and the ICU library hold. Each
+// mode prints plain text that the generators compare with their own
+// tables.
 package main
+
+/*
+#cgo LDFLAGS: -l:libicuuc.so.78
+#include <stdint.h>
+int32_t u_charMirror_78(int32_t c);
+double u_getNumericValue_78(int32_t c);
+int32_t u_charName_78(int32_t codepoint, int32_t nameChoice, char* buffer, int32_t bufferLength, int32_t* err);
+int32_t u_charDirection_78(int32_t c);
+*/
+import "C"
 
 import (
 	"bufio"
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"unicode"
+	"unsafe"
 
+	"golang.org/x/text/cases"
+	"golang.org/x/text/language"
+	"golang.org/x/text/unicode/bidi"
+	"golang.org/x/text/width"
 	"golang.org/x/text/unicode/norm"
 )
 
@@ -137,6 +154,149 @@ func main() {
 				fmt.Fprintf(w, "%04X %04X\n", r, t)
 			}
 		}
+	case "script":
+		// The script name of every code point, from the tables of the
+		// standard library. The names match the file of the standard.
+		names := make([]string, len(unicode.Scripts))
+		i := 0
+		for name := range unicode.Scripts {
+			names[i] = name
+			i++
+		}
+		sort.Strings(names)
+		who := make([]int16, 0x110000)
+		for i := range who {
+			who[i] = -1
+		}
+		for k, name := range names {
+			for _, r := range unicode.Scripts[name].R16 {
+				for c := uint16(r.Lo); c <= r.Hi; c += r.Stride {
+					who[c] = int16(k)
+					if c > 0xFFFF-r.Stride {
+						break
+					}
+				}
+			}
+			for _, r := range unicode.Scripts[name].R32 {
+				for c := r.Lo; c <= r.Hi; c += r.Stride {
+					who[c] = int16(k)
+					if c > 0x10FFFF-r.Stride {
+						break
+					}
+				}
+			}
+		}
+		start := 0
+		for c := 1; c <= 0x110000; c++ {
+			if c != 0x110000 && who[c] == who[start] {
+				continue
+			}
+			label := "Unknown"
+			if who[start] >= 0 {
+				label = names[who[start]]
+			}
+			fmt.Fprintf(w, "%04X %04X %s\n", start, c-1, label)
+			start = c
+		}
+	case "width":
+		kind := map[width.Kind]string{
+			width.Neutral:            "N",
+			width.EastAsianNarrow:    "Na",
+			width.EastAsianAmbiguous: "A",
+			width.EastAsianWide:      "W",
+			width.EastAsianFullwidth: "F",
+			width.EastAsianHalfwidth: "H",
+		}
+		runs(func(r rune) string { return kind[width.LookupRune(r).Kind()] },
+			func(v string) bool { return false }, false)
+	case "bidi":
+		// The trie of the package collapses the format characters into
+		// one class. The list below holds the class of each of them.
+		controls := map[rune]string{
+			0x202A: "LRE", 0x202B: "RLE", 0x202C: "PDF", 0x202D: "LRO",
+			0x202E: "RLO", 0x2066: "LRI", 0x2067: "RLI", 0x2068: "FSI",
+			0x2069: "PDI", 0x200E: "L", 0x200F: "R", 0x061C: "AL",
+		}
+		names := map[bidi.Class]string{
+			bidi.L: "L", bidi.R: "R", bidi.EN: "EN", bidi.ES: "ES",
+			bidi.ET: "ET", bidi.AN: "AN", bidi.CS: "CS", bidi.B: "B",
+			bidi.S: "S", bidi.WS: "WS", bidi.ON: "ON", bidi.BN: "BN",
+			bidi.NSM: "NSM", bidi.AL: "AL",
+		}
+		runs(func(r rune) string {
+			if n, ok := controls[r]; ok {
+				return n
+			}
+			p, _ := bidi.LookupRune(r)
+			return names[p.Class()]
+		}, func(v string) bool { return false }, true)
+	case "bidiicu":
+		// The direction class of every code point, from the ICU library.
+		// ICU fills the defaults of the file of the standard. The order
+		// is the enum of the ICU library, checked against known letters.
+		dirs := []string{"L", "R", "EN", "ES", "ET", "AN", "CS", "B",
+			"S", "WS", "ON", "LRE", "LRO", "AL", "RLE", "RLO", "PDF",
+			"NSM", "BN", "FSI", "LRI", "RLI", "PDI"}
+		runs(func(r rune) string {
+			return dirs[C.u_charDirection_78(C.int32_t(r))]
+		}, func(v string) bool { return false }, true)
+	case "mirror":
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			m := C.u_charMirror_78(C.int32_t(r))
+			if int32(m) != int32(r) {
+				fmt.Fprintf(w, "%04X %04X\n", int(r), int(m))
+			}
+		}
+	case "numeric":
+		// ICU gives this value when the code point has no numeric value.
+		const none = -1.23456789e+08
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			d := float64(C.u_getNumericValue_78(C.int32_t(r)))
+			if d == none {
+				continue
+			}
+			fmt.Fprintf(w, "%04X %v\n", int(r), d)
+		}
+	case "name":
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			if isSurrogate(r) {
+				continue
+			}
+			n := u_charName(int(r))
+			if n != "" {
+				fmt.Fprintf(w, "%04X %s\n", int(r), n)
+			}
+		}
+	case "fullcase":
+		// Each input line holds one code point in hex. The output holds
+		// the full upper case and the full lower case of it, separated
+		// by a tab.
+		up := cases.Upper(language.Und)
+		low := cases.Lower(language.Und)
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var r rune
+			fmt.Sscanf(sc.Text(), "%X", &r)
+			s := string(r)
+			fmt.Fprintf(w, "%s\t%s\n", hexes(up.String(s)), hexes(low.String(s)))
+		}
 	}
 	w.Flush()
+}
+
+// The name of a code point in the ICU library. Empty when it has none.
+func u_charName(r int) string {
+	var err C.int32_t
+	buf := make([]byte, 128)
+	C.u_charName_78(C.int32_t(r), 0, (*C.char)(unsafe.Pointer(&buf[0])), C.int32_t(len(buf)), &err)
+	if err != 0 {
+		return ""
+	}
+	for i, b := range buf {
+		if b == 0 {
+			return string(buf[:i])
+		}
+	}
+	return ""
 }

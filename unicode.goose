@@ -15,12 +15,16 @@ import std;
 import unicode_data;
 import normalize_data;
 import grapheme_data;
+import props_data;
+import case_full_data;
 import table;
 import utf8;
 import norm;
 import casing;
 import property;
 import grapheme;
+import props;
+import case_full;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";
@@ -90,3 +94,44 @@ const GB_V: i64 = 10;
 const GB_T: i64 = 11;
 const GB_LV: i64 = 12;
 const GB_LVT: i64 = 13;
+
+// ---- script values ---------------------------------------------------
+// The scripts of the standard follow Common and Inherited. The generator
+// assigns the other scripts in the order of the file of the standard.
+const SCRIPT_UNKNOWN: i64 = 0;    // the code point is outside the range of the standard
+const SCRIPT_COMMON: i64 = 1;     // the code point belongs to no script
+const SCRIPT_INHERITED: i64 = 2;  // the code point takes the script around it
+
+// ---- East Asian widths ------------------------------------------------
+const WIDTH_NEUTRAL: i64 = 0;    // narrow in every text
+const WIDTH_NARROW: i64 = 1;     // narrow in an East Asian text
+const WIDTH_AMBIGUOUS: i64 = 2;  // wide or narrow in an East Asian text
+const WIDTH_WIDE: i64 = 3;       // wide in every text
+const WIDTH_FULLWIDTH: i64 = 4;  // wide and takes a full cell
+const WIDTH_HALFWIDTH: i64 = 5;  // takes half a cell
+
+// ---- bidirectional classes --------------------------------------------
+// The classes follow the order of the file of the standard.
+const BIDI_L: i64 = 0;     // left to right
+const BIDI_R: i64 = 1;     // right to left
+const BIDI_AL: i64 = 2;    // arabic letter
+const BIDI_EN: i64 = 3;    // european number
+const BIDI_ES: i64 = 4;    // european number separator
+const BIDI_ET: i64 = 5;    // european number terminator
+const BIDI_AN: i64 = 6;    // arabic number
+const BIDI_CS: i64 = 7;    // common number separator
+const BIDI_NSM: i64 = 8;   // non spacing mark
+const BIDI_BN: i64 = 9;    // boundary neutral
+const BIDI_B: i64 = 10;    // paragraph separator
+const BIDI_S: i64 = 11;    // segment separator
+const BIDI_WS: i64 = 12;   // white space
+const BIDI_ON: i64 = 13;   // other neutral
+const BIDI_LRE: i64 = 14;  // left to right embedding
+const BIDI_LRO: i64 = 15;  // left to right override
+const BIDI_RLE: i64 = 16;  // right to left embedding
+const BIDI_RLO: i64 = 17;  // right to left override
+const BIDI_PDF: i64 = 18;  // pop directional format
+const BIDI_LRI: i64 = 19;  // left to right isolate
+const BIDI_RLI: i64 = 20;  // right to left isolate
+const BIDI_FSI: i64 = 21;  // first strong isolate
+const BIDI_PDI: i64 = 22;  // pop directional isolate

@@ -19,7 +19,19 @@ The files of the Character Database that the scripts read:
   GraphemeBreakTest.txt
   emoji-data.txt
   NormalizationTest.txt
+  Scripts.txt
+  EastAsianWidth.txt
+  DerivedBidiClass.txt
+  BidiMirroring.txt
+  NumericValue.txt
+  SpecialCasing.txt
+  DerivedCoreProperties.txt
+  Jamo.txt
 
 The scripts check each table against a second source. The second source
-is the Go standard library, the Go package golang.org/x/text/unicode/norm
-and Node with ICU. The scripts fail when the sources differ.
+is the Go standard library, the Go packages golang.org/x/text/unicode/norm,
+golang.org/x/text/width and golang.org/x/text/unicode/bidi, the package
+golang.org/x/text/cases, the ICU library, Node with ICU and the
+unicodedata module of Python. The scripts fail when the sources differ.
+The scripts use the unicodedata module as a second check only, because
+it holds Unicode 16.0.0.

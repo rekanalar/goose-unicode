@@ -47,6 +47,21 @@ fn scalar_ok(cp: i64) -> bool {
     return cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF);
 }
 
+// Reads the sequence that ends at byte j. Returns the code point and
+// the number of bytes. A bad form gives -1 and 1.
+fn decode_back(s: const u8[:], j: i64) -> i64, i64 {
+    if j <= 0 { return -1, 1; }
+    var start: i64 = j - 1;
+    var back: i64 = 0;
+    while start > 0 && s[start] >= 0x80 && s[start] < 0xC0 && back < 3 {
+        start -= 1;
+        back += 1;
+    }
+    let cp, len = decode_at(s, start);
+    if cp < 0 || start + len != j { return -1, 1; }
+    return cp, len;
+}
+
 // True when every byte of s belongs to a well formed sequence.
 fn utf8_valid(s: const u8[:]) -> bool {
     if s.len > MAX_INPUT { return false; }

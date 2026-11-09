@@ -56,6 +56,8 @@ fn main() {
     bad += suite::run_case();
     bad += suite::run_property();
     bad += suite::run_grapheme();
+    bad += suite::run_props();
+    bad += suite::run_case_full();
     bad += suite::run_hostile();
     if bad > 0 {
         print(bad, " checks failed\n");

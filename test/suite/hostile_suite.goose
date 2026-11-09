@@ -285,6 +285,100 @@ fn hostile_long_run() -> i64 {
     return bad;
 }
 
+// The property calls take a code point. A random value must give the
+// default of the property and must never read past the tables.
+fn hostile_properties() -> i64 {
+    var bad = 0;
+    var st: u64 = 987654321;
+    for k in 0..20000 {
+        let r = rnd(st);
+        let cp = r % 0x200000 - 0x100000;
+        let s = unicode::script(cp);
+        if s < unicode::SCRIPT_UNKNOWN || s > 200 {
+            print("FAIL: the script is out of range\n");
+            bad += 1;
+        }
+        let w = unicode::width(cp);
+        if w < unicode::WIDTH_NEUTRAL || w > unicode::WIDTH_HALFWIDTH {
+            print("FAIL: the width is out of range\n");
+            bad += 1;
+        }
+        let b = unicode::bidi_class(cp);
+        if b < unicode::BIDI_L || b > unicode::BIDI_PDI {
+            print("FAIL: the class is out of range\n");
+            bad += 1;
+        }
+        let num, den = unicode::numeric_value(cp);
+        if den < 0 || num < -1000000 {
+            print("FAIL: the numeric value is out of range\n");
+            bad += 1;
+        }
+        if cp >= 0 && cp <= 0x10FFFF {
+            let m = unicode::mirror_of(cp);
+            if m < 0 || m > 0x10FFFF {
+                print("FAIL: the mirror partner is out of range\n");
+                bad += 1;
+            }
+        }
+        if unicode::name(cp).len > 64 {
+            print("FAIL: the name is too long\n");
+            bad += 1;
+        }
+        if bad > 5 { return bad; }
+    }
+    return bad;
+}
+
+// The full case calls take a text. A random text must give a fault code
+// that the package names.
+fn hostile_full_case() -> i64 {
+    var bad = 0;
+    var st: u64 = 13572468;
+    for k in 0..20000 {
+        let text = hostile_text(st, rnd(st) % 20);
+        var out: u8[>..] = [];
+        let c1, o1 = unicode::to_upper_full(out, text[..]);
+        if !known(c1) { print("FAIL: the full upper gave an unknown code ", c1, "\n"); bad += 1; }
+        let c2, o2 = unicode::to_lower_full(out, text[..]);
+        if !known(c2) { print("FAIL: the full lower gave an unknown code ", c2, "\n"); bad += 1; }
+        if c1 == unicode::ERR_BAD_UTF8 && out.len != 0 {
+            print("FAIL: the full upper kept bytes in a fault\n");
+            bad += 1;
+        }
+        if c2 == unicode::ERR_BAD_UTF8 && out.len != 0 {
+            print("FAIL: the full lower kept bytes in a fault\n");
+            bad += 1;
+        }
+        if bad > 5 { return bad; }
+    }
+    return bad;
+}
+
+// The bounds of the full case calls. An input above the limit gives the
+// fault, and a result above the limit gives the fault too. A fault
+// leaves the buffer empty.
+fn hostile_full_bounds() -> i64 {
+    var bad = 0;
+    var big: u8[>..] = [];
+    for k in 0..unicode::MAX_INPUT + 1 { big.push(0x41); }
+    var out: u8[>..] = [];
+    let c1, o1 = unicode::to_upper_full(out, big[..]);
+    if c1 != unicode::ERR_TOO_LONG { print("FAIL: the full upper did not check the bound\n"); bad += 1; }
+    if out.len != 0 { print("FAIL: the full upper kept bytes\n"); bad += 1; }
+    let c2, o2 = unicode::to_lower_full(out, big[..]);
+    if c2 != unicode::ERR_TOO_LONG { print("FAIL: the full lower did not check the bound\n"); bad += 1; }
+    if out.len != 0 { print("FAIL: the full lower kept bytes\n"); bad += 1; }
+    // The output of the full case calls stays under the output bound
+    // for every input that the input bound allows. The call checks the
+    // output bound in code. The input bound gives the fault here.
+    var grow: u8[>..] = [];
+    for k in 0..unicode::MAX_OUTPUT / 2 + 1 { grow.push(0xDF); }
+    let c3, o3 = unicode::to_upper_full(out, grow[..]);
+    if c3 != unicode::ERR_TOO_LONG { print("FAIL: the full upper did not check the output bound\n"); bad += 1; }
+    if out.len != 0 { print("FAIL: the full upper kept bytes\n"); bad += 1; }
+    return bad;
+}
+
 fn run_hostile() -> i64 {
     var bad = 0;
     bad += hostile_random();
@@ -295,5 +389,8 @@ fn run_hostile() -> i64 {
     bad += hostile_fault_holds_no_bytes();
     bad += hostile_encode();
     bad += hostile_long_run();
+    bad += hostile_properties();
+    bad += hostile_full_case();
+    bad += hostile_full_bounds();
     return bad;
 }
