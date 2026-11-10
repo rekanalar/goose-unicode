@@ -28,7 +28,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.6.0";
+import unicode from "rekanalar/goose-unicode@v0.7.0";
 ```
 
 ## API
@@ -61,6 +61,8 @@ import unicode from "rekanalar/goose-unicode@v0.6.0";
 | `width_name(cp)` | the name of the width, such as `Wide` |
 | `char_width(cp)` | the width of one code point in terminal columns: 0, 1, 2 or 3; a control character gives -1 |
 | `string_width(s)` | the width of the text in terminal columns; gives a fault code and the width |
+| `char_width_cjk(cp)` | the width of one code point in the East Asian context: an ambiguous character takes 2 columns |
+| `string_width_cjk(s)` | the width of the text in the East Asian context; gives a fault code and the width |
 | `bidi_class(cp)` | the bidirectional class of a code point, as a `BIDI_` constant |
 | `bidi_class_name(cp)` | the name of the class, such as `L` or `AL` |
 | `mirrored(cp)` | true when the code point is mirrored |
@@ -260,6 +262,12 @@ sequences that a terminal draws as one cell. A family of emoji joined by
 zero width joiners counts as 2. A flag of two regional indicators counts
 as 2. A base with U+FE0F counts as 2.
 
+The call applies the script ligature rules of Rust. A Lam and an Alef
+in Arabic count as one column. An Alef and a Lamed in Hebrew count as
+one column. A coeng and a letter in Khmer count as one column less.
+The rules join pairs in Buginese, Tifinagh, Lisu, Old Turkic and Kirat
+Rai.
+
 A base with U+FE0E counts as 1 when the base takes the emoji form by
 default. The keycap of a digit counts as 2.
 
@@ -274,6 +282,21 @@ print(w);   // 2
 
 The call gives `ERR_BAD_UTF8` on a bad byte, and `ERR_TOO_LONG` above
 `MAX_INPUT`. It reads the bytes once, so the time is linear.
+
+The `string_width_cjk` call gives the width in the East Asian context. An
+ambiguous character takes 2 columns there, and 1 outside. A combining
+long solidus overlay joins the sign that precedes it. The sign is a
+less-than, an equals or a greater-than. The two form one glyph of 2
+columns.
+
+The narrow variation selectors U+FE00 and U+FE02 take the narrow form
+there. U+FE01 takes it outside. The call gives the same fault codes as
+`string_width`.
+
+```goose
+print(unicode::char_width(0xA1));        // 1
+print(unicode::char_width_cjk(0xA1));    // 2
+```
 
 ## Limits
 
@@ -296,15 +319,13 @@ The call gives `ERR_BAD_UTF8` on a bad byte, and `ERR_TOO_LONG` above
   call in the standard library. Go holds the algorithm in
   `golang.org/x/text/unicode/bidi`. Rust holds the `unicode-bidi` crate.
 - The package reads UTF-8, UTF-16 and UTF-32.
-- The package gives no East Asian context form of the width. Rust holds
-  `width_cjk` and `str_width_cjk`. They give an ambiguous character the
-  width of 2. This package always gives it the width of 1.
-- The package does not apply the script ligature rules of Rust. The
-  rules join a Lam and an Alef in Arabic. They join an Alef and a Lamed
-  in Hebrew, and a coeng and a letter in Khmer. They join pairs in
-  Buginese, Tifinagh, Lisu, Old Turkic and Kirat Rai.
-- A text with such a pair gets the sum of the widths of its code points.
-  The width can exceed the width that Rust gives.
+- The East Asian form skips the same marks as Rust after a combining
+  solidus overlay. Rust reads one field of the Character Database
+  loosely. It adds seven number signs, such as U+1011B, to the skipped
+  marks. This package copies that result, so the two agree.
+- The package holds no way to ask for both widths of one text at once.
+  Rust holds the same two calls. Node, Go and Python hold one call
+  with a flag.
 - The package does not strip ANSI escape codes. Node `string-width`
   strips them. The width of an escape sequence here is the sum of the
   widths of its characters.
@@ -347,6 +368,10 @@ beyond the reference libraries.
   sort of the smaller runs keeps the order of equal classes.
 - The decoder rejects overlong forms, surrogates, truncated sequences and
   values above U+10FFFF.
+- The width walk of a text holds one small state and reads the text from
+  the end. The time is linear in the bytes. A hostile text of joiners,
+  regional indicators or variation selectors cannot take quadratic time.
+  The Rust library walks the text in the same way.
 
   The UTF-16 decoder refuses a lone surrogate too. The Go library writes
   U+FFFD for it. A file with a lone surrogate gives an error here and a

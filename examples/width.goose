@@ -33,5 +33,14 @@ fn main() {
     print("control alone: ", unicode::char_width(0x09), "\n");
     let code6, w6 = unicode::string_width("a\tb");
     print("a tab in a text: ", code6, ", ", w6, "\n");
+    // The East Asian form gives an ambiguous character 2 columns.
+    print("inverted mark: ", unicode::char_width(0xA1), "\n");
+    print("inverted mark, East Asian: ", unicode::char_width_cjk(0xA1), "\n");
+    // A less-than sign and a solidus overlay form one glyph of 2 columns.
+    var solidus: u8[>..] = [];
+    push_utf8(solidus, 0x3C);
+    push_utf8(solidus, 0x338);
+    let code7, w7 = unicode::string_width_cjk(solidus[..]);
+    print("solidus overlay: ", code7, ", ", w7, "\n");
     return 0;
 }

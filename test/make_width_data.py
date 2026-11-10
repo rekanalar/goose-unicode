@@ -120,12 +120,84 @@ def main():
     zero = di | extend | hangul_vt | (prepend - pcm) | {0x0605, 0x070F, 0x0890, 0x0891, 0x08E2, 0xA8FA}
     zero.discard(0x115F)
     zero.discard(0x2D7F)
-    # The combining marks that the standard calls ignorable, plus the zero
-    # width joiner. They never break a joiner sequence.
-    ligature = (di & marks) | {0x200D}
     # The text presentation sequences of the ideographic supplement keep
     # the width of their base.
     text_pres = (text_style & emoji_pres) - set(range(0x1F200, 0x1F300))
+    # The code points of the script ligature rules. The joining group of
+    # the Alef comes from the Character Database. The Khmer ranges and
+    # the marks that do not break a ligature come from the generator of
+    # the Rust crate.
+    alef = load_prop("DerivedJoiningGroup.txt", "Alef")
+    khmer = set()
+    for lo, hi in ((0x1780, 0x1782), (0x1784, 0x1787), (0x1789, 0x178C),
+                   (0x178E, 0x1793), (0x1795, 0x1798), (0x179B, 0x179D)):
+        khmer.update(range(lo, hi + 1))
+    khmer |= {0x17A0, 0x17A2, 0x17A7, 0x17AB, 0x17AC, 0x17AF}
+    tifinagh = set(range(0x2D31, 0x2D66)) | {0x2D6F}
+    lisu = {0xA4FC, 0xA4FD}
+    # The marks that do not break a ligature, from the crate.
+    joining_t = load_prop("DerivedJoiningType.txt", "T")
+    ntz = zero - joining_t
+    lig = set()
+    for lo, hi in ((0x34F, 0x34F), (0x17B4, 0x17B5), (0x180B, 0x180D),
+                   (0x180F, 0x180F), (0x200D, 0x200D), (0xFE00, 0xFE0F),
+                   (0xE0100, 0xE01EF)):
+        lig.update(range(lo, hi + 1))
+
+    # The East Asian context form. A character of ambiguous width takes 2
+    # columns there. The crate widens the ambiguous characters by this rule:
+    # the East Asian width A, plus the line break class AI, minus the
+    # letters and the modifier symbols, plus U+0387, plus each character
+    # that decomposes to an ambiguous base and U+0338.
+    eaw_a = load_prop("EastAsianWidth.txt", "A")
+    lb_ai = load_prop("LineBreak.txt", "AI")
+    letters_sk = load_prop(os.path.join("extracted", "DerivedGeneralCategory.txt"),
+                           "(?:Lu|Ll|Lt|Lm|Lo|Sk)")
+    amb = set(eaw_a) | lb_ai
+    wide_eaw = eaw_wf - lb_ai
+    amb -= letters_sk
+    amb.add(0x0387)
+    ccc = {}
+    decomp = {}
+    # The crate reads the decomposition with a loose pattern over each line
+    # of UnicodeData.txt. When the decomposition field is empty, the pattern
+    # takes a later field made of hex digits, such as the numeric value 300
+    # of U+1011B. The same pattern here gives the same set as the crate.
+    loose = re.compile(r"([0-9A-Z]+);.*?;.*?;.*?;.*?;([0-9A-F ]+);")
+    for line in read_lines("UnicodeData.txt"):
+        f = line.split(";")
+        if len(f) < 6:
+            continue
+        cp = int(f[0], 16)
+        ccc[cp] = int(f[3])
+        m = loose.match(line)
+        if m:
+            decomp[int(m.group(1), 16)] = [int(x, 16) for x in m.group(2).split(" ")]
+    pairs = {}
+    for line in read_lines("UnicodeData.txt"):
+        f = line.split(";")
+        if len(f) >= 6 and f[5] and not f[5].startswith("<"):
+            parts = f[5].split(" ")
+            if len(parts) == 2 and parts[1] == "0338":
+                pairs[int(f[0], 16)] = int(parts[0], 16)
+    for cp, base in sorted(pairs.items()):
+        if base in amb:
+            amb.add(cp)
+    # The code points that the combining solidus overlay skips: the marks
+    # of canonical class above 1, the marks that do not break a ligature,
+    # and every character whose decomposition holds only those.
+    solidus = {cp for cp, c in ccc.items() if c > 1} | lig
+    again = True
+    while again:
+        again = False
+        for cp, d in decomp.items():
+            if cp not in solidus and all(x in solidus for x in d):
+                solidus.add(cp)
+                again = True
+    # The characters that carry a state of their own. A wide reading of
+    # their ambiguous width does not apply to them.
+    special1 = ({0x0A, 0x5DC, 0x1A10, 0x10C03, 0x16D67, 0x16D68} | alef | khmer
+                | tifinagh | lisu | set(range(0x1F1E6, 0x1F200)))
 
     def table_width(cp):
         # The rule order of the crate: the Khmer sign first, then the zero
@@ -176,6 +248,43 @@ def main():
     if diffs:
         fail("%d code points disagree with the crate" % diffs)
 
+    # The East Asian width of a character, and the check against the crate.
+    def cjk_width(cp):
+        w = char_width(cp)
+        if w == 1 and cp not in special1 and (cp in amb or cp in wide_eaw):
+            return 2
+        return w
+
+    ambiguous_wide = {cp for cp in range(MAX_CP)
+                      if char_width(cp) == 1 and cjk_width(cp) == 2}
+    got = oracle("cchar", lines)
+    diffs = 0
+    for cp in range(MAX_CP):
+        if int(got[cp]) != cjk_width(cp):
+            if diffs < 20:
+                print("U+%X: crate %s, cjk table %d" % (cp, got[cp], cjk_width(cp)), file=sys.stderr)
+            diffs += 1
+    if diffs:
+        fail("%d code points disagree with the crate in the East Asian form" % diffs)
+
+    # The solidus set: the text "< c U+0338" is 2 columns wider when c is
+    # skipped. Check every code point that holds no state of its own.
+    probes = [cp for cp in range(MAX_CP)
+              if not (0xD800 <= cp <= 0xDFFF) and cp >= 0xA0
+              and cp not in special1 and cp != 0x338 and cp != 0x200D
+              and not 0xFE00 <= cp <= 0xFE0F and cp not in emoji_pres
+              and cp not in mod_base]
+    got = oracle("cstr", ["3C %X 338" % cp for cp in probes])
+    diffs = 0
+    for cp, g in zip(probes, got):
+        want = (2 if cp in solidus else 1) + cjk_width(cp)
+        if int(g) != want:
+            if diffs < 20:
+                print("U+%X: crate %s, solidus model %d" % (cp, g, want), file=sys.stderr)
+            diffs += 1
+    if diffs:
+        fail("%d code points disagree with the crate in the solidus set" % diffs)
+
     # ---- the string cases --------------------------------------------
     cases = [
         [0x41],                                   # A, one column
@@ -197,6 +306,20 @@ def main():
         [0x1F3F4, 0xE0067, 0xE0062, 0xE0073, 0xE0063, 0xE0074, 0xE007F],   # subdivision flag
         [0x1F3F4, 0x200D, 0x1F3F4],
         [0x2329, 0xFE0E], [0x21A9, 0xFE0F], [0x25FD], [0x25FE, 0xFE0E],
+        [0x644, 0x622], [0x6B5, 0x623, 0x64B], [0x644, 0x64B, 0x627],   # lam alef
+        [0x5D0, 0x200D, 0x5DC], [0x5D0, 0x5DC],                       # hebrew
+        [0x1780, 0x17D2, 0x1781], [0x1780, 0x17D2, 0x17A4],           # khmer coeng
+        [0x1A15, 0x1A17, 0x200D, 0x1A10], [0x1A17, 0x1A10],           # buginese
+        [0x2D31, 0x2D7F, 0x2D32], [0x2D31, 0x200D, 0x2D32],           # tifinagh
+        [0xA4F8, 0xA4FC], [0x10C32, 0x200D, 0x10C03],                 # lisu, turkic
+        [0x16D63, 0x16D67], [0x16D69, 0x16D67], [0x16D63, 0x16D68],   # kirat rai
+        [0x1F469, 0xE0100, 0x200D, 0x1F600],                          # transparent mark in a joiner run
+        [0xA1], [0x3C, 0x338], [0x3D, 0x338, 0x338], [0x3E, 0x338], [0x41, 0x338, 0x3C],
+        [0x3C, 0x301, 0x338], [0x3C, 0x34F, 0x338], [0x3C, 0x622, 0x338],
+        [0x3C, 0x338, 0x622], [0x338, 0x622, 0x644], [0x622, 0x338, 0x644],
+        [0x622, 0x338, 0x64B, 0x644], [0xFE00, 0x201C], [0x201C, 0xFE00],
+        [0x201C, 0xFE02], [0x201C, 0xFE01], [0xAE, 0xFE0F], [0x3B1, 0x3B2],
+        [0x2460], [0x2500, 0x2501], [0x2264, 0x338], [0x2264],
         [0x200D], [0x200D, 0x200D], [0x1F9D1, 0x200D, 0x2764, 0xFE0F, 0x200D, 0x1F48B, 0x200D, 0x1F468],
     ]
     alphabet = sorted(emoji_style | text_style | {0xFE0F, 0xFE0E, 0xFE01, 0xFE00, 0xFE02,
@@ -205,15 +328,26 @@ def main():
         0x0A, 0x0D, 0x30, 0x23, 0x2A})
     alphabet += list(range(0x1F1E6, 0x1F200))
     alphabet += list(range(0x1F3FB, 0x1F400))
+    script = [0x644, 0x6B5, 0x76A, 0x8C7, 0x622, 0x627, 0x64B, 0x670, 0x200D,
+              0xFE0F, 0xFE0E, 0xFE01, 0x5D0, 0x5DC, 0x1780, 0x1783, 0x17D2, 0x17B4,
+              0x1A10, 0x1A15, 0x1A17, 0x2D31, 0x2D65, 0x2D6F, 0x2D7F, 0xA4FC,
+              0xA4FD, 0xA4F8, 0xA4FB, 0x10C03, 0x10C32, 0x16D63, 0x16D67, 0x16D68,
+              0x16D69, 0x34F, 0x180B, 0xE0100, 0x41, 0x1F600, 0x1F469,
+              0x338, 0x3C, 0x3D, 0x3E, 0xA1, 0x301, 0x64B, 0x201C, 0xFE00, 0xFE02,
+              0x2264, 0x3B1]
     rnd = random.Random(20261110)
-    for _ in range(50000):
+    for i in range(50000):
         n = rnd.randint(1, 12)
-        cases.append([rnd.choice(alphabet) for _ in range(n)])
+        pool = script if i % 2 else alphabet
+        cases.append([rnd.choice(pool) for _ in range(n)])
 
     bodies = [" ".join("%X" % cp for cp in text) for text in cases]
     widths = []
     for i in range(0, len(bodies), 10000):
         widths.extend(oracle("str", bodies[i:i + 10000]))
+    cwidths = []
+    for i in range(0, len(bodies), 10000):
+        cwidths.extend(oracle("cstr", bodies[i:i + 10000]))
     if len(widths) != len(cases):
         fail("the oracle gave %d widths for %d cases" % (len(widths), len(cases)))
 
@@ -245,7 +379,11 @@ def main():
             ("CW_EPS", "The bases of the emoji presentation sequences.", emoji_style),
             ("CW_TPS", "The bases of the non ideographic text presentation sequences.", text_pres),
             ("CW_EMB", "The bases of the emoji modifier sequences.", mod_base),
-            ("CW_LT", "The ignorable marks and the zero width joiner.", ligature),
+            ("CW_LT", "The marks that do not break a script ligature.", lig),
+            ("CW_ALEF", "The code points of the joining group Alef.", alef),
+            ("CW_NTZ", "The zero width code points that are not joining type Transparent.", ntz),
+            ("CW_AMB", "The code points that the East Asian context widens from 1 to 2.", ambiguous_wide),
+            ("CW_SOL", "The code points that a combining solidus overlay skips.", solidus),
         ):
             ranges = to_ranges(cps)
             write_rows(f, name + "_START", len(ranges), [r[0] for r in ranges],
@@ -257,7 +395,9 @@ def main():
     pool = []
     off = []
     exp = []
-    for text, w in zip(cases, widths):
+    cexp = []
+    for text, w, cw in zip(cases, widths, cwidths):
+        cexp.append(int(cw))
         off.append(len(pool))
         pool.append(len(text))
         pool.extend(text)
@@ -273,6 +413,8 @@ def main():
         write_rows(f, "W_POOL", len(pool), pool,
                    "For each case: the count of code points, the code points.")
         write_rows(f, "W_EXP", len(exp), exp, "The expected width of each case.")
+        write_rows(f, "W_EXPC", len(cexp), cexp,
+                   "The expected width of each case in the East Asian context form.")
     print("width cases: %d texts of %d characters, %d distinct widths" % (
         len(cases), len(pool) - len(cases), len(set(exp))))
 

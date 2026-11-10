@@ -52,6 +52,37 @@ fn w_chars() -> i64 {
             bad += 1;
         }
     }
+    bad += w_chars_cjk();
+    return bad;
+}
+
+// The East Asian width of the code points where the two forms differ.
+fn w_chars_cjk() -> i64 {
+    var bad = 0;
+    // The pins, the East Asian width, the two forms side by side.
+    let pins: i64[>..] = [
+        0xA1, 0x2018, 0x2019, 0x201C, 0x201D, 0x2460, 0x2500, 0xA1,
+        0x4E2D, 0xFF01, 0x3000, 0x0300, 0x1F600, 0xFE0F, 0xFE0E, 0xFE01,
+        0xFE00, 0xFE02, 0x338, 0x41, 0x20, 0x0A, 0x0D, 0x7F, 0x9F,
+        0x1F, 0x00, 0x10FFFF, 0x110000, 0xD800, 0xDFFF,
+    ];
+    let want: i64[>..] = [
+        2, 2, 2, 2, 2, 2, 2, 2,
+        2, 2, 2, 0, 2, 0, 0, 0,
+        0, 0, 0, 1, 1, -1, -1, -1,
+        -1, -1, -1, 1, -1, -1, -1,
+    ];
+    if pins.len != want.len {
+        print("FAIL: the East Asian pins do not match\n");
+        return 1;
+    }
+    for k in 0..pins.len {
+        let got = unicode::char_width_cjk(pins[k]);
+        if got != want[k] {
+            print("FAIL: char_width_cjk(", pins[k], ") = ", got, ", want ", want[k], "\n");
+            bad += 1;
+        }
+    }
     return bad;
 }
 
@@ -76,8 +107,14 @@ fn w_string_cases() -> i64 {
             bad += 1;
             if bad > 20 { print("FAIL: too many wrong widths\n"); return bad; }
         }
+        let codec, wc = unicode::string_width_cjk(buf[..]);
+        if codec != unicode::OK || wc != W_EXPC[c] {
+            print("FAIL: case ", c, " East Asian width ", wc, ", want ", W_EXPC[c], "\n");
+            bad += 1;
+            if bad > 20 { print("FAIL: too many wrong widths\n"); return bad; }
+        }
     }
-    if W_EXP.len != 50040 {
+    if W_EXP.len != 50079 {
         print("FAIL: the case file holds ", W_EXP.len, " cases\n");
         bad += 1;
     }
@@ -123,6 +160,27 @@ fn w_faults() -> i64 {
         print("FAIL: a long text gave ", code4, ", ", w4, "\n");
         bad += 1;
     }
+    // The East Asian form gives the same fault codes.
+    let codec1, wc1 = unicode::string_width_cjk(s[..]);
+    if codec1 != unicode::ERR_BAD_UTF8 || wc1 != 0 {
+        print("FAIL: a bad byte in the East Asian form gave ", codec1, ", ", wc1, "\n");
+        bad += 1;
+    }
+    let codec2, wc2 = unicode::string_width_cjk(lone[..]);
+    if codec2 != unicode::ERR_BAD_UTF8 {
+        print("FAIL: a lone continuation byte in the East Asian form gave ", codec2, "\n");
+        bad += 1;
+    }
+    let codec3, wc3 = unicode::string_width_cjk(cut[..]);
+    if codec3 != unicode::ERR_BAD_UTF8 {
+        print("FAIL: a truncated sequence in the East Asian form gave ", codec3, "\n");
+        bad += 1;
+    }
+    let codec4, wc4 = unicode::string_width_cjk(big[..]);
+    if codec4 != unicode::ERR_TOO_LONG || wc4 != 0 {
+        print("FAIL: a long text in the East Asian form gave ", codec4, ", ", wc4, "\n");
+        bad += 1;
+    }
     return bad;
 }
 
@@ -161,6 +219,15 @@ fn w_hostile() -> i64 {
         let code, w = unicode::string_width(zwj[..]);
         if code != unicode::OK || w != 2 {
             print("FAIL: the joiner run gave ", code, ", ", w, "\n");
+            bad += 1;
+        }
+    }
+    // The East Asian form walks the same text. The regional indicators
+    // pair the same way, so the width is the same.
+    for r in 0..3 {
+        let code, w = unicode::string_width_cjk(ris[..]);
+        if code != unicode::OK || w != 262144 {
+            print("FAIL: the flag run in the East Asian form gave ", code, ", ", w, "\n");
             bad += 1;
         }
     }
