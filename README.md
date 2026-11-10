@@ -9,7 +9,7 @@ The package validates UTF-8 and names the byte offset of the first
 malformed byte. It converts text to the four normalization forms. It
 converts case and folds case for caseless compare. It gives the general
 category and the combining class of a code point. It splits text into
-grapheme clusters. Pure Goose, no C.
+grapheme clusters, words and sentences. Pure Goose, no C.
 
 The package also gives the script, the width and the class of a code
 point. It gives the mirror flag, the numeric value and the name too.
@@ -22,7 +22,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.2.0";
+import unicode from "rekanalar/goose-unicode@v0.3.0";
 ```
 
 ## API
@@ -55,6 +55,13 @@ import unicode from "rekanalar/goose-unicode@v0.2.0";
 | `grapheme_count(s)` | the number of clusters that a user sees in the text |
 | `grapheme_next(s, at)` | the end of the cluster that starts at the byte offset; gives the code and the end |
 | `grapheme_offsets(out, s)` | copies the start offset of every cluster into the buffer of the caller |
+| `word_next(s, at)` | the end of the word segment that starts at the byte offset; gives the code and the end |
+| `word_count(s)` | the number of word segments, the spaces and the punctuation too |
+| `word_offsets(out, s)` | copies the start offset of every word segment into the buffer of the caller |
+| `is_word_like(s, start, end)` | true when the segment holds a letter, a number or an ideograph |
+| `sentence_next(s, at)` | the end of the sentence that starts at the byte offset; gives the code and the end |
+| `sentence_count(s)` | the number of sentences in the text |
+| `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
 
 The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
 general category is one of `CAT_CN`, `CAT_LU`, `CAT_LL` and the other 26
@@ -141,11 +148,41 @@ let code, count = unicode::grapheme_count("a🇩🇪");
 print(count);   // 2
 ```
 
+## Words and sentences
+
+The package splits text by the default word rules and the default sentence
+rules of the Unicode text segmentation standard. The segments cover the
+whole text, so the spaces and the punctuation are segments too. The
+`is_word_like` call tells a word from the rest. A full stop inside a
+number or a letter run does not end a word. A capital letter after a full
+stop and a space starts a new sentence. A lower case letter does not.
+
+```goose
+let text = "Dr. Who said it's 3.14.";
+let code, end = unicode::word_next(text, 4);
+print(text[4..end]);   // Who
+```
+
+A malformed byte forms a segment of its own. The time of every call is
+linear in the text. A call reads ahead past the marks that join to one
+code point only. A sentence read stops at the next terminator.
+
 ## Limits
 
-- The package does not split text into sentences or words. Node holds
-  `Intl.Segmenter`. Rust holds the `unicode-segmentation` crate. Python has
-  no such call in the standard library.
+- The word and sentence splits follow the default rules and no locale.
+  Node `Intl.Segmenter` splits Chinese, Japanese, Thai, Lao, Khmer and
+  Burmese with a dictionary, so it gives other words there. The default
+  rules split every Han ideograph. They give no boundary inside a Thai
+  run. Rust `unicode-segmentation` follows the default rules, as this
+  package does. Python has no such call in the standard library.
+- The sentence split holds no list of abbreviations. It splits "Mr. Smith"
+  after "Mr.".
+- The `is_word_like` call gives false for a text above `MAX_INPUT` and for
+  a bad range. It has no fault code.
+- The `is_word_like` flag follows the content of the segment. ICU takes
+  the flag of Node from the last rule that built the segment. Node can
+  differ for a segment that joins an apostrophe, a colon or a connector
+  to other code points.
 - The `bidi_class` call gives the class of one code point. The package does
   not reorder a text by the bidirectional algorithm. Python has no such
   call in the standard library. Go holds the algorithm in
@@ -192,6 +229,10 @@ beyond the reference libraries.
   replacement character U+FFFD for a bad byte. It cannot report the
   fault. A program that stores the replacement character loses the
   difference between a bad byte and a real U+FFFD.
+- The word and sentence splits take linear time. A long run of marks
+  after an apostrophe runs in one pass. A long run of terminators runs in
+  one pass. A long run of regional indicators runs in one pass. The test
+  suite runs texts of 200,000 code points through each.
 - Every property lookup is a binary search of bounded depth. A hostile
   code point cannot make a lookup take longer than the depth of the
   table. The test suite feeds 20,000 random code points around and
@@ -217,6 +258,7 @@ goose run examples/normalize.goose
 goose run examples/grapheme.goose
 goose run examples/case.goose
 goose run examples/props.goose
+goose run examples/words.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -229,7 +271,7 @@ Python.
 The scripts need the files of the Character Database. The first argument
 of each script names the directory that holds them. The default is the
 directory `tmp/ucd` of the management repository. The files come from
-`https://www.unicode.org/Public/17.0.0/ucd/`. The script `test/NOTICE`
+`https://www.unicode.org/Public/17.0.0/ucd/`. The word and sentence break files sit in its `auxiliary` directory. The script `test/NOTICE`
 names the files and the license.
 
 ```bash
@@ -240,6 +282,7 @@ python3 make_grapheme_data.py
 python3 make_vectors.py
 python3 make_props_data.py
 python3 make_case_full_data.py
+python3 make_segment_data.py
 ```
 
 ## License

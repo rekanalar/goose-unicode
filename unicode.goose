@@ -25,6 +25,9 @@ import property;
 import grapheme;
 import props;
 import case_full;
+import segment_data;
+import word;
+import sentence;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";
@@ -94,6 +97,43 @@ const GB_V: i64 = 10;
 const GB_T: i64 = 11;
 const GB_LV: i64 = 12;
 const GB_LVT: i64 = 13;
+
+// ---- word break classes ------------------------------------------------
+const WB_CR: i64 = 1;
+const WB_LF: i64 = 2;
+const WB_NEWLINE: i64 = 3;
+const WB_EXTEND: i64 = 4;
+const WB_ZWJ: i64 = 5;
+const WB_REGIONAL_INDICATOR: i64 = 6;
+const WB_FORMAT: i64 = 7;
+const WB_KATAKANA: i64 = 8;
+const WB_HEBREW_LETTER: i64 = 9;
+const WB_ALETTER: i64 = 10;
+const WB_SINGLE_QUOTE: i64 = 11;
+const WB_DOUBLE_QUOTE: i64 = 12;
+const WB_MIDNUMLET: i64 = 13;
+const WB_MIDLETTER: i64 = 14;
+const WB_MIDNUM: i64 = 15;
+const WB_NUMERIC: i64 = 16;
+const WB_EXTENDNUMLET: i64 = 17;
+const WB_WSEGSPACE: i64 = 18;
+
+// ---- sentence break classes ---------------------------------------------
+const SB_CR: i64 = 1;
+const SB_LF: i64 = 2;
+const SB_EXTEND: i64 = 3;
+const SB_SEP: i64 = 4;
+const SB_FORMAT: i64 = 5;
+const SB_SP: i64 = 6;
+const SB_LOWER: i64 = 7;
+const SB_UPPER: i64 = 8;
+const SB_OLETTER: i64 = 9;
+const SB_NUMERIC: i64 = 10;
+const SB_ATERM: i64 = 11;
+const SB_SCONTINUE: i64 = 12;
+const SB_STERM: i64 = 13;
+const SB_CLOSE: i64 = 14;
+const SB_BAD: i64 = 15;    // a malformed byte; no table holds it
 
 // ---- script values ---------------------------------------------------
 // The scripts of the standard follow Common and Inherited. The generator

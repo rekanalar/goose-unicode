@@ -17,6 +17,10 @@ The files of the Character Database that the scripts read:
   DerivedNormalizationProps.txt
   GraphemeBreakProperty.txt
   GraphemeBreakTest.txt
+  WordBreakProperty.txt
+  WordBreakTest.txt
+  SentenceBreakProperty.txt
+  SentenceBreakTest.txt
   emoji-data.txt
   NormalizationTest.txt
   Scripts.txt
