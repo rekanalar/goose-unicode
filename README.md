@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.9.0";
+import unicode from "rekanalar/goose-unicode@v0.10.0";
 ```
 
 ## API
@@ -56,6 +56,8 @@ import unicode from "rekanalar/goose-unicode@v0.9.0";
 | `to_title(out, s)` | writes the text in title case: the first cased letter of each word in title case, the rest in lower case |
 | `titlecase_cp(out, cp)` | writes the title case mapping of one code point; a code point with no mapping gives itself |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
+| `category_group(cp)` | the group of the category, as a `GROUP_` constant: letter, mark, number, punctuation, symbol, separator or other |
+| `is_letter_cased(cp)` | true for an upper case, a lower case and a title case letter |
 | `category_name(cp)` | the two letter name of the category, such as `Lu` |
 | `combining_class(cp)` | the canonical combining class of a code point, from 0 to 240 |
 | `script(cp)` | the script of a code point, as a `SCRIPT_` constant |
@@ -70,6 +72,9 @@ import unicode from "rekanalar/goose-unicode@v0.9.0";
 | `bidi_class_name(cp)` | the name of the class, such as `L` or `AL` |
 | `bidi_levels(out, s, dir)` | the embedding level of each code point; `dir` is `BIDI_DIR_LTR`, `BIDI_DIR_RTL` or `BIDI_DIR_AUTO`; gives a fault code and the level of the first paragraph |
 | `bidi_order(out, levels)` | the visual order of a line: the index of each code point from left to right |
+| `is_emoji(cp)`, `is_emoji_presentation(cp)`, `is_emoji_modifier(cp)`, `is_emoji_modifier_base(cp)`, `is_emoji_component(cp)`, `is_extended_pictographic(cp)` | the emoji properties of the standard |
+| `is_zwj(cp)`, `is_emoji_presentation_selector(cp)`, `is_text_presentation_selector(cp)`, `is_regional_indicator(cp)`, `is_tag_character(cp)` | the code points that build emoji sequences |
+| `is_id_start(cp)`, `is_id_continue(cp)`, `is_xid_start(cp)`, `is_xid_continue(cp)` | the identifier properties of the standard |
 | `mirrored(cp)` | true when the code point is mirrored |
 | `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
 | `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
@@ -241,6 +246,26 @@ let num, den = unicode::numeric_value(0xBD);
 print(num, "/", den);                  // 1/2
 ```
 
+## Emoji and identifiers
+
+The emoji calls give the properties of the emoji data file of the
+standard. The `is_emoji_component` call is true for every code point that
+holds the property. This includes the zero width joiner, which is no
+emoji. The Rust crate `unicode-properties` gives false for the joiner,
+against its own documentation. The package follows the standard.
+
+The identifier calls give `ID_Start`, `ID_Continue` and the two `XID`
+forms. Each call tests one code point. None checks a whole identifier.
+
+```goose
+print(unicode::is_emoji(0x1F600));      // true
+print(unicode::is_id_start(0x61));      // true
+print(unicode::category_group(0x31));   // 2, GROUP_NUMBER
+```
+
+A call with a value outside U+0000 to U+10FFFF gives false. The group of
+such a value is `GROUP_OTHER`.
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -365,6 +390,10 @@ print(unicode::char_width_cjk(0xA1));    // 2
 
 ## Limits
 
+- An identifier is more than the start and continue tests. A caller that
+  accepts names from users also normalizes the text to NFC. It checks for
+  look alike characters too, as UAX #31 and UAX #39 describe. The package
+  gives the tests and no check of a whole name.
 - The title case follows the default word rules and no locale. It gives
   no Turkish dotted I and no Dutch IJ. A caller that needs a language
   rule maps the first letter itself with `titlecase_cp`.
@@ -496,6 +525,7 @@ goose run examples/utf32.goose
 goose run examples/width.goose
 goose run examples/title.goose
 goose run examples/bidi.goose
+goose run examples/flags.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -537,12 +567,15 @@ python3 make_utf16_data.py
 python3 make_utf32_data.py
 python3 make_width_data.py
 python3 make_title_data.py
+python3 make_flags_data.py
 ```
 
 The title script checks its table against the Go library and the Rust
 `unicode-case-mapping` crate. The crate holds an older release of the
 standard, so the script warns about the newest code points. The script
-`diff_title.py` compares random texts with the Go library.
+`diff_title.py` compares random texts with the Go library. The flags script
+checks the ten emoji and identifier properties against Node over every
+code point.
 
 ## License
 

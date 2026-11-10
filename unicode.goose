@@ -16,6 +16,7 @@ import unicode_data;
 import normalize_data;
 import grapheme_data;
 import props_data;
+import flags_data;
 import case_full_data;
 import title_data;
 import table;
@@ -27,6 +28,7 @@ import casing;
 import property;
 import grapheme;
 import props;
+import flags;
 import case_full;
 import title;
 import segment_data;
@@ -151,6 +153,15 @@ const SB_BAD: i64 = 15;    // a malformed byte; no table holds it
 const SCRIPT_UNKNOWN: i64 = 0;    // the code point is outside the range of the standard
 const SCRIPT_COMMON: i64 = 1;     // the code point belongs to no script
 const SCRIPT_INHERITED: i64 = 2;  // the code point takes the script around it
+
+// ---- Groups of the general category -----------------------------------
+const GROUP_LETTER: i64 = 0;       // Lu, Ll, Lt, Lm, Lo
+const GROUP_MARK: i64 = 1;         // Mn, Mc, Me
+const GROUP_NUMBER: i64 = 2;       // Nd, Nl, No
+const GROUP_PUNCTUATION: i64 = 3;  // Pc, Pd, Ps, Pe, Pi, Pf, Po
+const GROUP_SYMBOL: i64 = 4;       // Sm, Sc, Sk, So
+const GROUP_SEPARATOR: i64 = 5;    // Zs, Zl, Zp
+const GROUP_OTHER: i64 = 6;        // Cc, Cf, Cs, Co, Cn
 
 // ---- East Asian widths ------------------------------------------------
 const WIDTH_NEUTRAL: i64 = 0;    // narrow in every text

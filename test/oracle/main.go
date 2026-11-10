@@ -87,6 +87,26 @@ func main() {
 		fmt.Println(unicode.Version, norm.Version)
 	case "cat":
 		runs(category, func(v string) bool { return false }, true)
+	case "catgroup":
+		// The group of the general category of every code point, as the
+		// runs of the group letter. The surrogates take the other group.
+		runs(func(r rune) string {
+			switch {
+			case unicode.In(r, unicode.L):
+				return "L"
+			case unicode.In(r, unicode.M):
+				return "M"
+			case unicode.In(r, unicode.N):
+				return "N"
+			case unicode.In(r, unicode.P):
+				return "P"
+			case unicode.In(r, unicode.S):
+				return "S"
+			case unicode.In(r, unicode.Z):
+				return "Z"
+			}
+			return "C"
+		}, func(v string) bool { return false }, true)
 	case "ccc":
 		runs(func(r rune) string { return fmt.Sprint(norm.NFC.PropertiesString(string(r)).CCC()) },
 			func(v string) bool { return v == "0" }, false)

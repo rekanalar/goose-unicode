@@ -65,6 +65,7 @@ fn main() {
     bad += suite::run_width();
     bad += suite::run_bidi();
     bad += suite::run_title();
+    bad += suite::run_flags();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

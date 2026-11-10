@@ -33,3 +33,5 @@ import bidi_cases;
 import bidi_class_cases;
 import title_cases;
 import title_suite;
+import flags_cases;
+import flags_suite;
