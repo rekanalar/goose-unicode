@@ -26,3 +26,5 @@ import utf32_suite;
 import hostile_suite;
 import props_suite;
 import case_full_suite;
+import width_cases;
+import width_suite;

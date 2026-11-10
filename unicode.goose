@@ -30,6 +30,8 @@ import case_full;
 import segment_data;
 import word;
 import sentence;
+import width_data;
+import width;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";

@@ -12,3 +12,6 @@ __pycache__/
 test-output.txt
 /tmp/
 /test/oracle/oracle
+
+# Build output of the Rust oracle
+/test/oracle/target/

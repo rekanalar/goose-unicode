@@ -62,6 +62,7 @@ fn main() {
     bad += suite::run_props();
     bad += suite::run_case_full();
     bad += suite::run_hostile();
+    bad += suite::run_width();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

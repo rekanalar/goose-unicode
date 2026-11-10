@@ -31,6 +31,10 @@ The files of the Character Database that the scripts read:
   SpecialCasing.txt
   DerivedCoreProperties.txt
   Jamo.txt
+  HangulSyllableType.txt
+  PropList.txt
+  emoji-variation-sequences.txt
+  extracted/DerivedGeneralCategory.txt
 
 The UTF-16 test vectors come from the Go, the Node and the Rust
 libraries. The UTF-32 test vectors come from the codecs of Python. The
@@ -44,3 +48,10 @@ golang.org/x/text/cases, the ICU library, Node with ICU and the
 unicodedata module of Python. The scripts fail when the sources differ.
 The scripts use the unicodedata module as a second check only, because
 it holds Unicode 16.0.0.
+
+The width tables and the width test vectors come from the Rust
+unicode-width crate 0.2.2 and from the files of the Character Database.
+The crate is under the MIT license and the Apache License 2.0. The
+script test/make_width_data.py reads the crate through the oracle in
+test/oracle and writes numbers only. No source code of the crate is in
+this package.
