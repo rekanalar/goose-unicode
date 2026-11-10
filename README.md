@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.11.0";
+import unicode from "rekanalar/goose-unicode@v0.12.0";
 ```
 
 ## API
@@ -79,6 +79,7 @@ import unicode from "rekanalar/goose-unicode@v0.11.0";
 | `mirrored(cp)` | true when the code point is mirrored |
 | `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
 | `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
+| `lookup(name)` | the code point of a name or a formal alias of the Character Database; -1 when there is none |
 | `name(cp)` | the name of a code point in the Character Database; no name gives the empty slice |
 | `grapheme_count(s)` | the number of clusters that a user sees in the text |
 | `grapheme_next(s, at)` | the end of the cluster that starts at the byte offset; gives the code and the end |
@@ -245,6 +246,7 @@ three jamo.
 ```goose
 print(unicode::script_name(0x6F22));   // Han
 print(unicode::name(0xAC00));          // HANGUL SYLLABLE GA
+print(unicode::lookup("hangul syllable ga"));   // 44032, the code point 0xAC00
 let num, den = unicode::numeric_value(0xBD);
 print(num, "/", den);                  // 1/2
 ```
@@ -441,6 +443,16 @@ print(unicode::char_width_cjk(0xA1));    // 2
   the flag of Node from the last rule that built the segment. Node can
   differ for a segment that joins an apostrophe, a colon or a connector
   to other code points.
+- The `lookup` call matches the whole name. It ignores the case of ASCII
+  letters and nothing else. The loose matching of UAX #44 (rule LM2)
+  ignores spaces and hyphens too, and the call does not.
+  A name of a code point wins over an alias of the same text.
+
+  The call gives one code point, so it holds no named sequence. Python
+  `unicodedata.lookup` gives a text of several code points for a sequence.
+  Rust `unicode_names2` and ICU give no sequence. The ICU function knows
+  the names and the corrections only, and no other alias. A query above
+  128 bytes gives -1, and the call has no fault code.
 - The line breaks follow the default rules and no tailoring. They give no
   dictionary break inside Thai, Lao, Khmer or Burmese. The ICU iterator
   breaks those scripts with a dictionary, so it gives other breaks
@@ -507,6 +519,9 @@ beyond the reference libraries.
   A text of open brackets or of deep embeddings cannot exhaust the
   memory.
   The Go library and the Rust crate bound the same values.
+- The `lookup` call stops a query above 128 bytes before the search. The
+  longest name is 88 bytes. A search takes at most 18 compares of the
+  query with a name. A hostile query cannot take more time.
 - The line break call decodes the text into one packed number for each
   code point. It reads at most two units ahead. The time is linear in the
   bytes. A hostile text of spaces, combining marks, regional indicators,
@@ -565,6 +580,7 @@ goose run examples/title.goose
 goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
+goose run examples/lookup.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -608,6 +624,7 @@ python3 make_width_data.py
 python3 make_title_data.py
 python3 make_flags_data.py
 python3 make_line_data.py
+python3 make_name_data.py
 python3 diff_line.py
 ```
 

@@ -28,6 +28,8 @@ import casing;
 import property;
 import grapheme;
 import props;
+import name_data;
+import names;
 import flags;
 import case_full;
 import title;

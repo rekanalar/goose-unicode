@@ -7,6 +7,7 @@ package main
 /*
 #cgo LDFLAGS: -l:libicuuc.so.78
 #include <stdint.h>
+#include <stdlib.h>
 int32_t u_charMirror_78(int32_t c);
 double u_getNumericValue_78(int32_t c);
 int32_t u_charName_78(int32_t codepoint, int32_t nameChoice, char* buffer, int32_t bufferLength, int32_t* err);
@@ -16,6 +17,7 @@ void* ubrk_open_78(int32_t type, const char* locale, const uint16_t* text, int32
 int32_t ubrk_next_78(void* bi);
 int32_t ubrk_getRuleStatus_78(void* bi);
 void ubrk_close_78(void* bi);
+int32_t u_charFromName_78(int32_t nameChoice, const char* name, int32_t* err);
 */
 import "C"
 
@@ -364,6 +366,30 @@ func main() {
 				out = append(out, rune(dest[i]))
 			}
 			fmt.Fprintf(w, "%s\n", hexes(string(out)))
+		}
+	case "fromname":
+		// Each input line holds a name. The output holds the code point
+		// in hex, or -1 when the ICU library knows no such name. A name
+		// of a code point wins over an alias.
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			cn := C.CString(sc.Text())
+			res := -1
+			for _, choice := range []C.int32_t{0, 2, 3} {
+				var err C.int32_t
+				r := C.u_charFromName_78(choice, cn, &err)
+				if err == 0 {
+					res = int(r)
+					break
+				}
+			}
+			C.free(unsafe.Pointer(cn))
+			if res < 0 {
+				fmt.Fprintln(w, "-1")
+			} else {
+				fmt.Fprintf(w, "%04X\n", res)
+			}
 		}
 	case "icelines":
 		// Each input line holds the code points of one text in hex. The

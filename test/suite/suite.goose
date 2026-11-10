@@ -37,3 +37,5 @@ import flags_cases;
 import flags_suite;
 import line_cases;
 import line_suite;
+import name_cases;
+import name_suite;
