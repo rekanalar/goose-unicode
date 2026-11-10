@@ -31,3 +31,5 @@ import width_suite;
 import bidi_suite;
 import bidi_cases;
 import bidi_class_cases;
+import title_cases;
+import title_suite;

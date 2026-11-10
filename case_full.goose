@@ -52,17 +52,7 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64) -> i64, i64 {
                 push_utf8(out, upper_cp(cp));
             }
         } else {
-            if cp == SIGMA_CP[0] {
-                // The capital sigma lowers to sigma, or to the final
-                // sigma at the end of a word.
-                if sigma_is_final(s, i, n) {
-                    push_utf8(out, SIGMA_FINAL[0]);
-                } else {
-                    push_utf8(out, 0x3C3);
-                }
-            } else if !push_full(out, LFULL_CP[..], LFULL_OFF[..], LFULL_POOL[..], cp) {
-                push_utf8(out, lower_cp(cp));
-            }
+            push_lower_full(out, s, i, n, cp);
         }
         if out.len > MAX_OUTPUT {
             out.clear();
@@ -71,6 +61,20 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64) -> i64, i64 {
         i += n;
     }
     return OK, -1;
+}
+
+// Writes the full lower case of the code point at the byte offset i of
+// the text. The capital sigma gives the final sigma at the end of a word.
+fn push_lower_full(out: u8[>..]&, s: const u8[:], i: i64, n: i64, cp: i64) {
+    if cp == SIGMA_CP[0] {
+        if sigma_is_final(s, i, n) {
+            push_utf8(out, SIGMA_FINAL[0]);
+        } else {
+            push_utf8(out, 0x3C3);
+        }
+    } else if !push_full(out, LFULL_CP[..], LFULL_OFF[..], LFULL_POOL[..], cp) {
+        push_utf8(out, lower_cp(cp));
+    }
 }
 
 // Writes the full mapping of the code point when the table holds one.

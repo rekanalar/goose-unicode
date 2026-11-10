@@ -11,6 +11,7 @@ int32_t u_charMirror_78(int32_t c);
 double u_getNumericValue_78(int32_t c);
 int32_t u_charName_78(int32_t codepoint, int32_t nameChoice, char* buffer, int32_t bufferLength, int32_t* err);
 int32_t u_charDirection_78(int32_t c);
+int32_t u_strToTitle_78(uint16_t* dest, int32_t destCapacity, const uint16_t* src, int32_t srcLength, const uint16_t* localeID, const uint16_t* pivot, int32_t* err);
 */
 import "C"
 
@@ -310,6 +311,65 @@ func main() {
 			fmt.Sscanf(sc.Text(), "%X", &r)
 			s := string(r)
 			fmt.Fprintf(w, "%s\t%s\n", hexes(up.String(s)), hexes(low.String(s)))
+		}
+	case "icetitle":
+		// Each input line holds the code points of one text in hex,
+		// separated by spaces. The output holds the title case of the
+		// text from the ICU library.
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			fields := strings.Fields(sc.Text())
+			src := make([]uint16, 0, len(fields))
+			for _, f := range fields {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				src = append(src, uint16(v))
+			}
+			dest := make([]uint16, 4*len(src)+16)
+			var err C.int32_t
+			n := C.u_strToTitle_78((*C.uint16_t)(unsafe.Pointer(&dest[0])),
+				C.int32_t(len(dest)), (*C.uint16_t)(unsafe.Pointer(&src[0])),
+				C.int32_t(len(src)), nil, nil, &err)
+			if err != 0 {
+				fmt.Fprintln(w, "error")
+				continue
+			}
+			out := make([]rune, 0, n)
+			for i := 0; i < int(n); i++ {
+				out = append(out, rune(dest[i]))
+			}
+			fmt.Fprintf(w, "%s\n", hexes(string(out)))
+		}
+	case "titlecp":
+		// The title case of every code point. The lines hold the code
+		// points whose title case differs from the code point.
+		t := cases.Title(language.Und)
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			if isSurrogate(r) {
+				continue
+			}
+			s := t.String(string(r))
+			if s != string(r) {
+				fmt.Fprintf(w, "%04X %s\n", r, hexes(s))
+			}
+		}
+	case "title":
+		// Each input line holds the code points of one text in hex,
+		// separated by spaces. The output holds the title case of the
+		// text in the same form.
+		t := cases.Title(language.Und)
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			fields := strings.Fields(sc.Text())
+			var b strings.Builder
+			for _, f := range fields {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				b.WriteRune(v)
+			}
+			fmt.Fprintf(w, "%s\n", hexes(t.String(b.String())))
 		}
 	}
 	w.Flush()

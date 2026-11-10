@@ -7,7 +7,7 @@ programming language.
 
 The package validates UTF-8 and names the byte offset of the first
 malformed byte. It converts text to the four normalization forms. It
-converts case and folds case for caseless compare. It gives the general
+converts case, gives the title case and folds case for caseless compare. It gives the general
 category and the combining class of a code point. It splits text into
 grapheme clusters, words and sentences. It reads and writes UTF-16 and
 UTF-32.
@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.8.0";
+import unicode from "rekanalar/goose-unicode@v0.9.0";
 ```
 
 ## API
@@ -53,6 +53,8 @@ import unicode from "rekanalar/goose-unicode@v0.8.0";
 | `fold_case(out, s)` | writes the text in its case fold, for caseless compare |
 | `to_upper_full(out, s)` | writes the text in upper case with the full mappings |
 | `to_lower_full(out, s)` | writes the text in lower case with the full mappings and the final sigma |
+| `to_title(out, s)` | writes the text in title case: the first cased letter of each word in title case, the rest in lower case |
+| `titlecase_cp(out, cp)` | writes the title case mapping of one code point; a code point with no mapping gives itself |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
 | `category_name(cp)` | the two letter name of the category, such as `Lu` |
 | `combining_class(cp)` | the canonical combining class of a code point, from 0 to 240 |
@@ -136,6 +138,35 @@ var out: u8[>..] = [];
 unicode::to_upper_full(out, "Straße");   // STRASSE
 unicode::to_lower_full(out, "ΟΟΣ ΟΣ");   // οος ος
 ```
+
+## Title case
+
+The `to_title` call follows the title case algorithm of the Unicode
+standard. It splits the text into words with the word rules of the
+package. The first cased character of each word takes the title case
+mapping. The rest of the word takes the full lower case, with the final
+sigma rule. A word with no cased character stays as it is.
+
+```goose
+var out: u8[>..] = [];
+unicode::to_title(out, "ǆ straße don't");   // ǅ Straße Don't
+unicode::titlecase_cp(out, 0xDF);           // Ss
+```
+
+The digraph ǆ has a title case form of its own, ǅ. The sharp s gives two
+letters when it starts a word. Python `str.title` splits a word at every
+character that is no letter, so it gives "Don'T". This package follows the
+standard and gives "Don't". The standard, Python and Go all give "1St" for
+"1st", and so does this package.
+
+The Go library `golang.org/x/text/cases` approximates the word rules, so
+its answers differ for a few texts. Go joins a mid word mark, such as a
+full stop or a colon, to a digit. The standard breaks the word there. Go
+reads a combining mark after a character that is no letter as part of a word. Go gives the
+final sigma after a digit or an uncased letter, and the standard does not.
+
+ICU adds a tailoring of its own. It gives "1st" and splits "ab.cd" into two
+words. The package follows the standard in all these cases.
 
 ## UTF-16
 
@@ -334,6 +365,10 @@ print(unicode::char_width_cjk(0xA1));    // 2
 
 ## Limits
 
+- The title case follows the default word rules and no locale. It gives
+  no Turkish dotted I and no Dutch IJ. A caller that needs a language
+  rule maps the first letter itself with `titlecase_cp`.
+
 - The word and sentence splits follow the default rules and no locale.
   Node `Intl.Segmenter` splits Chinese, Japanese, Thai, Lao, Khmer and
   Burmese with a dictionary, so it gives other words there. The default
@@ -459,6 +494,8 @@ goose run examples/words.goose
 goose run examples/utf16.goose
 goose run examples/utf32.goose
 goose run examples/width.goose
+goose run examples/title.goose
+goose run examples/bidi.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -499,7 +536,13 @@ python3 make_segment_data.py
 python3 make_utf16_data.py
 python3 make_utf32_data.py
 python3 make_width_data.py
+python3 make_title_data.py
 ```
+
+The title script checks its table against the Go library and the Rust
+`unicode-case-mapping` crate. The crate holds an older release of the
+standard, so the script warns about the newest code points. The script
+`diff_title.py` compares random texts with the Go library.
 
 ## License
 
