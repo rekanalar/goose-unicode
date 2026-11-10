@@ -68,6 +68,7 @@ fn main() {
     bad += suite::run_flags();
     bad += suite::run_line();
     bad += suite::run_name();
+    bad += suite::run_char();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

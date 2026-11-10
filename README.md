@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.12.0";
+import unicode from "rekanalar/goose-unicode@v0.13.0";
 ```
 
 ## API
@@ -79,6 +79,14 @@ import unicode from "rekanalar/goose-unicode@v0.12.0";
 | `mirrored(cp)` | true when the code point is mirrored |
 | `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
 | `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
+| `numeric_type(cp)`, `numeric_type_name(cp)` | the numeric type: `NUMTYPE_NONE`, `NUMTYPE_DECIMAL`, `NUMTYPE_DIGIT` or `NUMTYPE_NUMERIC`, and its name |
+| `decimal_value(cp)`, `digit_value(cp)` | the decimal digit value and the digit value of a code point; -1 when there is none |
+| `decomposition_type(cp)`, `decomposition_type_name(cp)` | the decomposition type, as a `DECOMP_` constant, and its name |
+| `decomposition(out, cp)` | writes the one level mapping of a code point into the buffer of the caller |
+| `joining_type(cp)`, `joining_type_name(cp)` | the joining type, as a `JOINING_` constant, and its name |
+| `joining_group(cp)`, `joining_group_name(cp)` | the joining group as a number, and its name such as `Beh` |
+| `bidi_bracket_type(cp)` | the paired bracket type: `BRACKET_NONE`, `BRACKET_OPEN` or `BRACKET_CLOSE` |
+| `bidi_paired_bracket(cp)` | the partner of a bracket; a code point that is no bracket gives itself |
 | `lookup(name)` | the code point of a name or a formal alias of the Character Database; -1 when there is none |
 | `name(cp)` | the name of a code point in the Character Database; no name gives the empty slice |
 | `grapheme_count(s)` | the number of clusters that a user sees in the text |
@@ -250,6 +258,36 @@ print(unicode::lookup("hangul syllable ga"));   // 44032, the code point 0xAC00
 let num, den = unicode::numeric_value(0xBD);
 print(num, "/", den);                  // 1/2
 ```
+
+## Numbers, mappings and joining
+
+The numeric type tells a decimal digit from a digit and from a plain
+number. A decimal digit has a decimal value and a digit value. A
+superscript two has a digit value and no decimal value. A vulgar
+fraction has a numeric value from `numeric_value` and neither digit
+value.
+
+The `decomposition` call gives the one level mapping of a code point.
+The `decomposition_type` call gives its tag. The
+mapping of a Hangul syllable is algorithmic. The call gives the jamo, as
+Python `unicodedata.decomposition` does, and the type is canonical.
+Full normalization stays with `normalize`.
+
+The joining type and group serve the shaping of Arabic and Syriac. The
+groups have no constants. The call `joining_group_name` gives the name,
+and the call `joining_group` gives a number that follows the order of the
+names.
+
+```goose
+print(unicode::joining_type_name(0x628));   // Dual_Joining
+print(unicode::joining_group_name(0x628));  // Beh
+```
+
+The package agrees with the ICU library on every code point. This holds
+for the numeric type, the decomposition type and the joining properties.
+It holds for the bracket type and partner too. The package agrees with
+Python on the decimal value, the digit value and the mapping. Python
+holds an older release, so this holds for its code points only.
 
 ## Emoji and identifiers
 
@@ -453,6 +491,13 @@ print(unicode::char_width_cjk(0xA1));    // 2
   Rust `unicode_names2` and ICU give no sequence. The ICU function knows
   the names and the corrections only, and no other alias. A query above
   128 bytes gives -1, and the call has no fault code.
+- The `joining_group` call gives a number and not a named constant. The
+  groups follow the order of the names in the file. A later release can
+  add a group and move the numbers. Compare the name, not the number.
+- The `decomposition` call gives one level, except for a Hangul syllable,
+  where it gives the jamo as Python does. The ICU library has no such
+  call, so the mapping has Python as its only reference. A value outside
+  the range gives the value of an unassigned code point.
 - The line breaks follow the default rules and no tailoring. They give no
   dictionary break inside Thai, Lao, Khmer or Burmese. The ICU iterator
   breaks those scripts with a dictionary, so it gives other breaks
@@ -581,6 +626,7 @@ goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/lookup.goose
+goose run examples/chars.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -625,6 +671,7 @@ python3 make_title_data.py
 python3 make_flags_data.py
 python3 make_line_data.py
 python3 make_name_data.py
+python3 make_char_data.py
 python3 diff_line.py
 ```
 

@@ -30,6 +30,8 @@ import grapheme;
 import props;
 import name_data;
 import names;
+import char_data;
+import chars;
 import flags;
 import case_full;
 import title;

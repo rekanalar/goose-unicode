@@ -18,6 +18,10 @@ int32_t ubrk_next_78(void* bi);
 int32_t ubrk_getRuleStatus_78(void* bi);
 void ubrk_close_78(void* bi);
 int32_t u_charFromName_78(int32_t nameChoice, const char* name, int32_t* err);
+int32_t u_getIntPropertyValue_78(int32_t c, int32_t which);
+const char* u_getPropertyValueName_78(int32_t property, int32_t value, int32_t nameChoice);
+int32_t u_getBidiPairedBracket_78(int32_t c);
+int32_t u_charDigitValue_78(int32_t c);
 */
 import "C"
 
@@ -366,6 +370,35 @@ func main() {
 				out = append(out, rune(dest[i]))
 			}
 			fmt.Fprintf(w, "%s\n", hexes(string(out)))
+		}
+	case "icuprop":
+		// The runs of the value of one ICU integer property, as the long
+		// name of the value. The argument is the number of the property.
+		var prop int
+		fmt.Sscanf(os.Args[2], "%d", &prop)
+		runs(func(r rune) string {
+			v := C.u_getIntPropertyValue_78(C.int32_t(r), C.int32_t(prop))
+			p := C.u_getPropertyValueName_78(C.int32_t(prop), v, 1)
+			if p == nil {
+				return fmt.Sprintf("#%d", int(v))
+			}
+			return C.GoString(p)
+		}, func(v string) bool { return false }, true)
+	case "icubracket":
+		// The code points that have a paired bracket other than themselves.
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			m := C.u_getBidiPairedBracket_78(C.int32_t(r))
+			if int32(m) != int32(r) {
+				fmt.Fprintf(w, "%04X %04X\n", int(r), int(m))
+			}
+		}
+	case "icudigit":
+		// The decimal digit value of every code point that has one.
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			d := C.u_charDigitValue_78(C.int32_t(r))
+			if d >= 0 {
+				fmt.Fprintf(w, "%04X %d\n", int(r), int(d))
+			}
 		}
 	case "fromname":
 		// Each input line holds a name. The output holds the code point
