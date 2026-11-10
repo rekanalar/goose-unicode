@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.14.0";
+import unicode from "rekanalar/goose-unicode@v0.15.0";
 ```
 
 ## API
@@ -106,6 +106,8 @@ import unicode from "rekanalar/goose-unicode@v0.14.0";
 | `line_break_class(cp)` | the `Line_Break` class of a code point, as an `LB_` constant, before rule LB1 resolves it |
 | `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31; gives the code and the offset of the first bad byte |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
+| `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
+| `sort_key(out, s)` | the sort key of the text: the primary, the secondary and the tertiary weights |
 
 The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
 general category is one of `CAT_CN`, `CAT_LU`, `CAT_LL` and the other 26
@@ -483,6 +485,44 @@ print(unicode::char_width(0xA1));        // 1
 print(unicode::char_width_cjk(0xA1));    // 2
 ```
 
+## Collating
+
+The `compare` call gives the sign of the root collation order of two
+texts: -1, 0 or 1. The `sort_key` call gives the sort key of one text
+in the buffer of the caller. The key holds the primary weights, then
+the secondary weights, then the tertiary weights. A byte value of 1
+ends each level, and a byte value of 0 ends the key. The text of an
+empty key has no code point. The key of one letter holds six numbers.
+
+The sign of the comparison of two keys equals the sign of `compare`
+for the same texts. A caller can sort the keys once and search them
+many times.
+
+The order is the root order of the Unicode Collation Algorithm. The
+table comes from the root collation of CLDR at Unicode 17.0.0.
+Variable characters keep their primary weight, so a hyphen orders
+like a letter. Lower case sorts before upper case through the
+tertiary level. The package decomposes each text to the canonical
+form first, so two spellings of one text order equal.
+
+The table holds 974 contractions of up to three code points, and the
+longest match wins. A contraction also matches across a combining
+mark. The mark must order before the next code point of the
+sequence. The weights of the skipped mark then follow the weights of
+the contraction. The scan across marks stops at a starter and at 32
+marks.
+
+A code point with no table row takes the implicit weights of the
+algorithm. A Hangul syllable takes the weights of its jamos.
+
+```goose
+var out: i64[>..] = [];
+let code, offset = unicode::compare(out, "amber", "Apple");
+if code == unicode::OK && out[0] == -1 {
+    print("amber sorts before Apple\n");
+}
+```
+
 ## Limits
 
 - An identifier is more than the start and continue tests. A caller that
@@ -538,6 +578,22 @@ print(unicode::char_width_cjk(0xA1));    // 2
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
+- The collation follows the root locale and no tailoring. The strength,
+  the alternate shifted weighting, the numeric order, the case options
+  and the script reordering stay out. A caller that needs a locale gets
+  the root order here.
+- The Han ideographs order by the implicit weights of the algorithm. ICU
+  78 and Node order the Han script by the Unihan radical stroke order.
+  Go, Rust and the conformance file of the standard follow the implicit
+  weights, as this package does.
+- The four references carry tables of different Unicode versions. On
+  50,000 random pairs of the whole range, ICU 78 and Node agree. Go and
+  Rust differ from ICU 78 on about 0.7 percent of the pairs. Each
+  difference holds a Han pair or a code point with no row in one table.
+  The script `diff_coll.py` prints the differences.
+- A discontiguous match scans at most 32 marks. A text that holds more
+  marks between the parts of a contraction orders the parts apart. ICU
+  78 scans the marks without a bound.
 - The East Asian form skips the same marks as Rust after a combining
   solidus overlay. Rust reads one field of the Character Database
   loosely. It adds seven number signs, such as U+1011B, to the skipped
@@ -626,6 +682,11 @@ beyond the reference libraries.
   code point cannot make a lookup take longer than the depth of the
   table. The test suite feeds 20,000 random code points around and
   beyond the range of each lookup.
+- The collation walk reads each text once and holds the weights of one
+  unit at a time. The discontiguous scan takes at most 32 marks per
+  start. A hostile text of Tibetan marks or of long mark runs cannot
+  take quadratic time. A key above `MAX_OUTPUT` gives `ERR_TOO_LONG`
+  and writes nothing.
 
 These risks stay.
 
@@ -655,6 +716,7 @@ goose run examples/title.goose
 goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
+goose run examples/collate.goose
 goose run examples/lookup.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
@@ -705,7 +767,15 @@ python3 make_name_data.py
 python3 make_char_data.py
 python3 make_script_data.py
 python3 diff_line.py
+python3 make_coll_data.py
+python3 diff_coll.py
 ```
+
+The collation script reads the root collation table and the conformance
+texts of the CLDR repository. It writes the table of the package and
+the pairs of the suite. It asks the ICU library for the sign of each
+random pair. The script `diff_coll.py` compares random pairs with the
+ICU library, the Go package, Node and the Rust `icu_collator` crate.
 
 The title script checks its table against the Go library and the Rust
 `unicode-case-mapping` crate. The crate holds an older release of the

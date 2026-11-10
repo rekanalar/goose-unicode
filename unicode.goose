@@ -46,6 +46,8 @@ import bidi_data;
 import linebreak_data;
 import bidi;
 import linebreak;
+import coll_data;
+import collate;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";

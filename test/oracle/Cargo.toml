@@ -9,6 +9,8 @@ unicode-width = "0.2.2"
 unicode-bidi = "0.3.18"
 unicode-case-mapping = "1.0.0"
 unicode-linebreak = "0.1.5"
+icu_collator = "2"
+icu_locale = "2"
 
 [[bin]]
 name = "width"
@@ -25,6 +27,10 @@ path = "title.rs"
 [[bin]]
 name = "linebreak"
 path = "linebreak.rs"
+
+[[bin]]
+name = "collate"
+path = "collate.rs"
 
 [profile.release]
 opt-level = 2

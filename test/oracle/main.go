@@ -5,7 +5,7 @@
 package main
 
 /*
-#cgo LDFLAGS: -l:libicuuc.so.78
+#cgo LDFLAGS: -l:libicuuc.so.78 -l:libicui18n.so.78
 #include <stdint.h>
 #include <stdlib.h>
 int32_t u_charMirror_78(int32_t c);
@@ -25,6 +25,10 @@ int32_t u_charDigitValue_78(int32_t c);
 int32_t uscript_getScriptExtensions_78(int32_t c, int32_t* scripts, int32_t capacity, int32_t* err);
 const char* uscript_getName_78(int32_t code);
 void u_charAge_78(int32_t c, uint8_t* versionArray);
+void* ucol_open_78(const char* loc, int32_t* err);
+void ucol_close_78(void* col);
+int32_t ucol_strcoll_78(void* col, const uint16_t* a, int32_t alen, const uint16_t* b, int32_t blen);
+int32_t ucol_getSortKey_78(void* col, const uint16_t* src, int32_t len, uint8_t* key, int32_t cap);
 */
 import "C"
 
@@ -39,6 +43,7 @@ import (
 	"unsafe"
 
 	"golang.org/x/text/cases"
+	"golang.org/x/text/collate"
 	"golang.org/x/text/language"
 	"golang.org/x/text/unicode/bidi"
 	"golang.org/x/text/unicode/norm"
@@ -417,6 +422,84 @@ func main() {
 			sort.Strings(names)
 			return strings.Join(names, ",")
 		}, func(v string) bool { return false }, true)
+	case "gocoll":
+		// Each input line holds two texts in hex code points, separated
+		// by a bar. The output holds the sign of the root collator of
+		// the x/text package. The und locale is the root locale.
+		col := collate.New(language.Und)
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			body, second, _ := strings.Cut(sc.Text(), "|")
+			sign := func(text string) string {
+				var b strings.Builder
+				for _, f := range strings.Fields(text) {
+					var v rune
+					fmt.Sscanf(f, "%X", &v)
+					b.WriteRune(v)
+				}
+				return b.String()
+			}
+			sa := sign(body)
+			sb := sign(second)
+			r := col.CompareString(sa, sb)
+			fmt.Fprintln(w, r)
+		}
+	case "icecoll", "icekey":
+		// Each input line holds two texts in hex code points, separated
+		// by a bar. icecoll prints the sign of the ICU collator on the
+		// und locale. icekey prints the byte sort key of the first text.
+		// The locale is opened by name: a null name opens the locale of
+		// the environment, which sorts case in another order.
+		var st C.int32_t
+		loc := C.CString("und")
+		col := C.ucol_open_78(loc, &st)
+		C.free(unsafe.Pointer(loc))
+		if st != 0 {
+			fmt.Fprintln(w, "open error")
+			break
+		}
+		defer C.ucol_close_78(col)
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for sc.Scan() {
+			body, second, _ := strings.Cut(sc.Text(), "|")
+			sign := func(text string) []uint16 {
+				units := []uint16{}
+				for _, f := range strings.Fields(text) {
+					var v rune
+					fmt.Sscanf(f, "%X", &v)
+					for _, u := range utf16.Encode([]rune{v}) {
+						units = append(units, u)
+					}
+				}
+				return units
+			}
+			ua := sign(body)
+			if len(ua) == 0 {
+				if strings.HasPrefix(second, "KEY") {
+					fmt.Fprintln(w, "EMPTY")
+					continue
+				}
+				fmt.Fprintln(w, "0")
+				continue
+			}
+			if strings.HasPrefix(second, "KEY") {
+				buf := make([]C.uint8_t, 4096)
+				n := C.ucol_getSortKey_78(col, (*C.uint16_t)(unsafe.Pointer(&ua[0])),
+					C.int32_t(len(ua)), &buf[0], C.int32_t(len(buf)))
+				parts := make([]string, n)
+				for i := 0; i < int(n); i++ {
+					parts[i] = fmt.Sprintf("%02X", buf[i])
+				}
+				fmt.Fprintln(w, strings.Join(parts, " "))
+				continue
+			}
+			ub := sign(second)
+			fmt.Fprintln(w, C.ucol_strcoll_78(col, (*C.uint16_t)(unsafe.Pointer(&ua[0])),
+				C.int32_t(len(ua)), (*C.uint16_t)(unsafe.Pointer(&ub[0])), C.int32_t(len(ub))))
+		}
 	case "iceage":
 		// The runs of the age of every code point, as major.minor.
 		runs(func(r rune) string {

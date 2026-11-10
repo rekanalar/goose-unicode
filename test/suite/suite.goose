@@ -43,3 +43,5 @@ import char_cases;
 import char_suite;
 import script_cases;
 import script_suite;
+import coll_cases;
+import coll_suite;
