@@ -32,6 +32,10 @@ The files of the Character Database that the scripts read:
   DerivedCoreProperties.txt
   Jamo.txt
 
+The UTF-16 test vectors come from the Go, the Node and the Rust
+libraries. The script writes numbers only. The source code of those
+libraries is under the licenses of those projects.
+
 The scripts check each table against a second source. The second source
 is the Go standard library, the Go packages golang.org/x/text/unicode/norm,
 golang.org/x/text/width and golang.org/x/text/unicode/bidi, the package

@@ -57,6 +57,7 @@ fn main() {
     bad += suite::run_property();
     bad += suite::run_grapheme();
     bad += suite::run_segment();
+    bad += suite::run_utf16();
     bad += suite::run_props();
     bad += suite::run_case_full();
     bad += suite::run_hostile();

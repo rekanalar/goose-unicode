@@ -10,3 +10,5 @@
 __pycache__/
 *.pyc
 test-output.txt
+/tmp/
+/test/oracle/oracle

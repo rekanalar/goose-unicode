@@ -44,7 +44,7 @@ fn decode_at(s: const u8[:], i: i64) -> i64, i64 {
 
 // True when the code point is a Unicode scalar value.
 fn scalar_ok(cp: i64) -> bool {
-    return cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF);
+    return cp >= 0 && cp <= 0x10FFFF && !utf16_is_surrogate(cp);
 }
 
 // Reads the sequence that ends at byte j. Returns the code point and

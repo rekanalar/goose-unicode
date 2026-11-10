@@ -21,13 +21,14 @@ import (
 	"sort"
 	"strings"
 	"unicode"
+	"unicode/utf16"
 	"unsafe"
 
 	"golang.org/x/text/cases"
 	"golang.org/x/text/language"
 	"golang.org/x/text/unicode/bidi"
-	"golang.org/x/text/width"
 	"golang.org/x/text/unicode/norm"
+	"golang.org/x/text/width"
 )
 
 var cats = []string{"Cn", "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No",
@@ -266,6 +267,35 @@ func main() {
 			if n != "" {
 				fmt.Fprintf(w, "%04X %s\n", int(r), n)
 			}
+		}
+	case "utf16":
+		// Each input line holds the code points of a text in hex, then a
+		// bar, then the byte order. The output holds the UTF-16 bytes of
+		// the text in hex and the number of the units.
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			body, order, _ := strings.Cut(sc.Text(), "|")
+			order = strings.TrimSpace(order)
+			var cps []rune
+			for _, h := range strings.Fields(body) {
+				var r rune
+				fmt.Sscanf(h, "%X", &r)
+				cps = append(cps, r)
+			}
+			units := utf16.Encode(cps)
+			var sb strings.Builder
+			for i, u := range units {
+				if i > 0 {
+					sb.WriteByte(' ')
+				}
+				if order == "be" {
+					fmt.Fprintf(&sb, "%02X %02X", byte(u>>8), byte(u))
+				} else {
+					fmt.Fprintf(&sb, "%02X %02X", byte(u), byte(u>>8))
+				}
+			}
+			fmt.Fprintf(w, "%s|%d\n", sb.String(), len(units))
 		}
 	case "fullcase":
 		// Each input line holds one code point in hex. The output holds

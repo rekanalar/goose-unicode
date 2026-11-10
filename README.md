@@ -9,7 +9,9 @@ The package validates UTF-8 and names the byte offset of the first
 malformed byte. It converts text to the four normalization forms. It
 converts case and folds case for caseless compare. It gives the general
 category and the combining class of a code point. It splits text into
-grapheme clusters, words and sentences. Pure Goose, no C.
+grapheme clusters, words and sentences. It reads and writes UTF-16.
+
+Pure Goose, no C.
 
 The package also gives the script, the width and the class of a code
 point. It gives the mirror flag, the numeric value and the name too.
@@ -22,7 +24,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.3.0";
+import unicode from "rekanalar/goose-unicode@v0.4.0";
 ```
 
 ## API
@@ -32,6 +34,10 @@ import unicode from "rekanalar/goose-unicode@v0.3.0";
 | `utf8_valid(s)` | true when every byte of the text starts a sequence that the standard accepts |
 | `utf8_decode(out, s)` | copies the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
 | `utf8_encode(out, cp)` | writes the UTF-8 form of one code point; refuses a surrogate and a value above U+10FFFF |
+| `utf16_decode(out, s, big_endian)` | reads the UTF-16 bytes of the text and writes the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
+| `utf16_encode(out, cps, big_endian)` | writes the UTF-16 bytes of the code points into the buffer of the caller |
+| `utf16_rune_len(cp)` | the number of UTF-16 units of the code point: 1, 2 or 0 |
+| `utf16_is_surrogate(cp)` | true when the code point is in the range U+D800 to U+DFFF |
 | `normalize(out, form, s)` | writes the text in the given form into the buffer of the caller |
 | `is_normalized(form, s)` | true when the text is already in the given form |
 | `to_upper(out, s)` | writes the text in upper case with the simple mappings |
@@ -115,6 +121,32 @@ unicode::to_upper_full(out, "Straße");   // STRASSE
 unicode::to_lower_full(out, "ΟΟΣ ΟΣ");   // οος ος
 ```
 
+## UTF-16
+
+The package reads and writes UTF-16 in both byte orders. The byte order
+is the last argument of the two calls. A code point below U+10000 takes
+one unit. A code point at or above U+10000 takes two units: a high
+surrogate and a low surrogate.
+
+A lone surrogate is a fault. The call gives `ERR_BAD_UTF16` and the
+byte offset of the first bad byte. The buffer of the caller stays
+empty. An odd count of bytes is a fault too.
+
+The Go library writes U+FFFD for a lone surrogate, so the two answers
+differ there. The Node library writes U+FFFD as well, unless the
+decoder runs in the fatal mode. The Rust library refuses the text.
+
+The package does not read the byte order mark. A caller that reads a
+file with a mark removes the first two bytes itself.
+
+```goose
+var cps: i64[>..] = [];
+unicode::utf8_decode(cps, "Hi");
+var out: u8[>..] = [];
+unicode::utf16_encode(out, cps[..], false);
+print(out);   // H i
+```
+
 ## Properties
 
 The property calls take one code point. Each lookup is a binary search
@@ -187,8 +219,8 @@ code point only. A sentence read stops at the next terminator.
   not reorder a text by the bidirectional algorithm. Python has no such
   call in the standard library. Go holds the algorithm in
   `golang.org/x/text/unicode/bidi`. Rust holds the `unicode-bidi` crate.
-- The package reads UTF-8 only. It does not read UTF-16 or UTF-32. Go holds
-  `unicode/utf16` and `unicode/utf32`. Rust holds the `encoding` crates.
+- The package reads UTF-8 and UTF-16. It does not read UTF-32. Go holds
+  `unicode/utf32`. Rust holds the `encoding` crates.
 - The package does not give the width of the text for a terminal. The East
   Asian width is not a terminal width. Rust holds the `unicode-width`
   crate. Go holds `golang.org/x/text/width`.
@@ -212,7 +244,8 @@ beyond the reference libraries.
 
 - Every call checks the length of its input before any other work. The
   limit is `MAX_INPUT` of 1,048,576 bytes. A longer input gives
-  `ERR_TOO_LONG` and no work starts.
+  `ERR_TOO_LONG` and no work starts. The UTF-16 encoder counts code
+  points, not bytes, so it takes at most 1,048,576 code points.
 - Every call that writes text checks the length of its result. The limit is
   `MAX_OUTPUT` of 4,194,304 bytes. A longer result gives `ERR_TOO_LONG`
   and writes nothing. A compatibility decomposition of a long text can
@@ -225,7 +258,11 @@ beyond the reference libraries.
   marks. A hostile run of marks cannot take quadratic time. The insertion
   sort of the smaller runs keeps the order of equal classes.
 - The decoder rejects overlong forms, surrogates, truncated sequences and
-  values above U+10FFFF. The standard library walk of Goose gives the
+  values above U+10FFFF.
+
+  The UTF-16 decoder refuses a lone surrogate too. The Go library writes
+  U+FFFD for it. A file with a lone surrogate gives an error here and a
+  text there. The standard library walk of Goose gives the
   replacement character U+FFFD for a bad byte. It cannot report the
   fault. A program that stores the replacement character loses the
   difference between a bad byte and a real U+FFFD.
@@ -259,6 +296,7 @@ goose run examples/grapheme.goose
 goose run examples/case.goose
 goose run examples/props.goose
 goose run examples/words.goose
+goose run examples/utf16.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -283,6 +321,7 @@ python3 make_vectors.py
 python3 make_props_data.py
 python3 make_case_full_data.py
 python3 make_segment_data.py
+python3 make_utf16_data.py
 ```
 
 ## License
