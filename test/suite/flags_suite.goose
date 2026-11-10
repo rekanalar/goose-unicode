@@ -26,6 +26,8 @@ fn flag_samples() -> i64 {
     bad += fl_check(unicode::is_id_continue(0x5F) && !unicode::is_id_start(0x5F), "underscore");
     bad += fl_check(unicode::is_id_continue(0x300), "combining mark continues");
     bad += fl_check(!unicode::is_id_start(0x20) && !unicode::is_id_continue(0x2D), "space and hyphen");
+    // The tables come from Unicode 17.0, as the Node and Go oracles hold.
+    bad += fl_check(unicode::UNICODE_VERSION == "17.0.0", "tables version");
     bad += fl_check(unicode::is_zwj(0x200D) && !unicode::is_zwj(0x200C), "joiner test");
     bad += fl_check(unicode::is_emoji_presentation_selector(0xFE0F), "selector 16");
     bad += fl_check(unicode::is_text_presentation_selector(0xFE0E), "selector 15");

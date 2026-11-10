@@ -36,6 +36,7 @@ import unicode from "rekanalar/goose-unicode@v0.10.0";
 
 | Function | What it does |
 |---|---|
+| `UNICODE_VERSION` | the version of the Unicode tables, `"17.0.0"`; Python gives it as `unicodedata.unidata_version` |
 | `utf8_valid(s)` | true when every byte of the text starts a sequence that the standard accepts |
 | `utf8_decode(out, s)` | copies the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
 | `utf8_encode(out, cp)` | writes the UTF-8 form of one code point; refuses a surrogate and a value above U+10FFFF |
