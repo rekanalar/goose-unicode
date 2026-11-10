@@ -6,10 +6,15 @@ publish = false
 
 [dependencies]
 unicode-width = "0.2.2"
+unicode-bidi = "0.3.18"
 
 [[bin]]
 name = "width"
 path = "width.rs"
+
+[[bin]]
+name = "bidi"
+path = "bidi.rs"
 
 [profile.release]
 opt-level = 2

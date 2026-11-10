@@ -28,3 +28,6 @@ import props_suite;
 import case_full_suite;
 import width_cases;
 import width_suite;
+import bidi_suite;
+import bidi_cases;
+import bidi_class_cases;

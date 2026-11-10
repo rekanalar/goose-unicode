@@ -15,7 +15,8 @@ UTF-32.
 Pure Goose, no C.
 
 The package gives the width of a character and of a text in terminal
-columns.
+columns. It runs the bidirectional algorithm and gives the levels and the
+visual order of a text.
 
 The package also gives the script, the width and the class of a code
 point. It gives the mirror flag, the numeric value and the name too.
@@ -28,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.7.0";
+import unicode from "rekanalar/goose-unicode@v0.8.0";
 ```
 
 ## API
@@ -65,6 +66,8 @@ import unicode from "rekanalar/goose-unicode@v0.7.0";
 | `string_width_cjk(s)` | the width of the text in the East Asian context; gives a fault code and the width |
 | `bidi_class(cp)` | the bidirectional class of a code point, as a `BIDI_` constant |
 | `bidi_class_name(cp)` | the name of the class, such as `L` or `AL` |
+| `bidi_levels(out, s, dir)` | the embedding level of each code point; `dir` is `BIDI_DIR_LTR`, `BIDI_DIR_RTL` or `BIDI_DIR_AUTO`; gives a fault code and the level of the first paragraph |
+| `bidi_order(out, levels)` | the visual order of a line: the index of each code point from left to right |
 | `mirrored(cp)` | true when the code point is mirrored |
 | `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
 | `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
@@ -239,6 +242,37 @@ A malformed byte forms a segment of its own. The time of every call is
 linear in the text. A call reads ahead past the marks that join to one
 code point only. A sentence read stops at the next terminator.
 
+## Bidirectional text
+
+The `bidi_levels` call runs the Unicode bidirectional algorithm (UAX #9)
+on a UTF-8 text. It gives one level per code point. An even level reads
+left to right and an odd level reads right to left. The text splits into
+paragraphs at each paragraph separator, and each paragraph takes its own
+level. The call returns the level of the first paragraph too.
+
+The code points that the algorithm removes get the level -1. These are
+the embedding and override marks and the boundary neutrals. The depth
+limit is 125, and the bracket stack holds 63 entries. The call applies the rules for
+isolates, paired brackets and the trailing white space. It treats the
+whole paragraph as one line.
+
+The `bidi_order` call reverses the runs of a line by rule L2. It skips a
+code point of level -1. A level below -1 or above 126 gives `ERR_BAD_ARG`.
+The package leaves out the rules L3 and L4, which depend on the renderer.
+
+```goose
+var levels: i64[>..] = [];
+let code, para = unicode::bidi_levels(levels, "ab אב", unicode::BIDI_DIR_AUTO);
+var order: i64[>..] = [];
+unicode::bidi_order(order, levels[..]);
+```
+
+The package agrees with every line of `BidiTest.txt` and
+`BidiCharacterTest.txt` of Unicode 17.0.0. Python has no such call in the
+standard library. Go holds `golang.org/x/text/unicode/bidi`, and Rust
+holds `unicode-bidi`. Both give a result per line, and this package
+gives the same levels for a line that spans the paragraph.
+
 ## Width
 
 The package gives the width of a character and of a text in the columns
@@ -314,10 +348,11 @@ print(unicode::char_width_cjk(0xA1));    // 2
   the flag of Node from the last rule that built the segment. Node can
   differ for a segment that joins an apostrophe, a colon or a connector
   to other code points.
-- The `bidi_class` call gives the class of one code point. The package does
-  not reorder a text by the bidirectional algorithm. Python has no such
-  call in the standard library. Go holds the algorithm in
-  `golang.org/x/text/unicode/bidi`. Rust holds the `unicode-bidi` crate.
+- The bidirectional calls treat a paragraph as one line. A caller that
+  breaks a paragraph into lines passes the levels of each line to
+  `bidi_order`. The rules L3 and L4 depend on the renderer, and the
+  package leaves them out. So do the combining marks and the mirrored
+  glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
 - The East Asian form skips the same marks as Rust after a combining
   solidus overlay. Rust reads one field of the Character Database
@@ -368,6 +403,13 @@ beyond the reference libraries.
   sort of the smaller runs keeps the order of equal classes.
 - The decoder rejects overlong forms, surrogates, truncated sequences and
   values above U+10FFFF.
+- The bidirectional algorithm reads the text a bounded number of times.
+  The matching isolates hold a bounded number of entries. So do the
+  first strong letter of each isolate, the bracket stack and the level
+  runs. A hostile text of nested isolates cannot take quadratic time.
+  A text of open brackets or of deep embeddings cannot exhaust the
+  memory.
+  The Go library and the Rust crate bound the same values.
 - The width walk of a text holds one small state and reads the text from
   the end. The time is linear in the bytes. A hostile text of joiners,
   regional indicators or variation selectors cannot take quadratic time.

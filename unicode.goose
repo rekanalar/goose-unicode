@@ -32,6 +32,8 @@ import word;
 import sentence;
 import width_data;
 import width;
+import bidi_data;
+import bidi;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";
