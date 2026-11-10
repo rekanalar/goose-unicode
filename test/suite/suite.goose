@@ -41,3 +41,5 @@ import name_cases;
 import name_suite;
 import char_cases;
 import char_suite;
+import script_cases;
+import script_suite;

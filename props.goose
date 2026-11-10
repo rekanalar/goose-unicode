@@ -19,8 +19,7 @@ fn script(cp: i64) -> i64 {
 
 // The name of the script of a code point, such as Latin or Han.
 fn script_name(cp: i64) -> const u8[:] {
-    let s = script(cp);
-    return SCRIPT_NAMES[SCRIPT_OFF[s]..SCRIPT_OFF[s + 1]];
+    return script_value_name(script(cp));
 }
 
 // The East Asian width of a code point, as a WIDTH_ constant.

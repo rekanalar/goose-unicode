@@ -32,6 +32,8 @@ import name_data;
 import names;
 import char_data;
 import chars;
+import script_data;
+import scripts_more;
 import flags;
 import case_full;
 import title;

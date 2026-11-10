@@ -22,6 +22,9 @@ int32_t u_getIntPropertyValue_78(int32_t c, int32_t which);
 const char* u_getPropertyValueName_78(int32_t property, int32_t value, int32_t nameChoice);
 int32_t u_getBidiPairedBracket_78(int32_t c);
 int32_t u_charDigitValue_78(int32_t c);
+int32_t uscript_getScriptExtensions_78(int32_t c, int32_t* scripts, int32_t capacity, int32_t* err);
+const char* uscript_getName_78(int32_t code);
+void u_charAge_78(int32_t c, uint8_t* versionArray);
 */
 import "C"
 
@@ -400,6 +403,27 @@ func main() {
 				fmt.Fprintf(w, "%04X %d\n", int(r), int(d))
 			}
 		}
+	case "icescriptext":
+		// The runs of the script extensions of every code point. The value
+		// is the sorted list of the long script names, joined by a comma.
+		runs(func(r rune) string {
+			var sc [64]C.int32_t
+			var err C.int32_t
+			n := int(C.uscript_getScriptExtensions_78(C.int32_t(r), &sc[0], 64, &err))
+			names := make([]string, 0, n)
+			for k := 0; k < n; k++ {
+				names = append(names, C.GoString(C.uscript_getName_78(sc[k])))
+			}
+			sort.Strings(names)
+			return strings.Join(names, ",")
+		}, func(v string) bool { return false }, true)
+	case "iceage":
+		// The runs of the age of every code point, as major.minor.
+		runs(func(r rune) string {
+			var v [4]C.uint8_t
+			C.u_charAge_78(C.int32_t(r), &v[0])
+			return fmt.Sprintf("%d.%d", int(v[0]), int(v[1]))
+		}, func(v string) bool { return false }, true)
 	case "fromname":
 		// Each input line holds a name. The output holds the code point
 		// in hex, or -1 when the ICU library knows no such name. A name

@@ -69,6 +69,7 @@ fn main() {
     bad += suite::run_line();
     bad += suite::run_name();
     bad += suite::run_char();
+    bad += suite::run_script();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

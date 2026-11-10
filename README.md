@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.13.0";
+import unicode from "rekanalar/goose-unicode@v0.14.0";
 ```
 
 ## API
@@ -63,6 +63,11 @@ import unicode from "rekanalar/goose-unicode@v0.13.0";
 | `combining_class(cp)` | the canonical combining class of a code point, from 0 to 240 |
 | `script(cp)` | the script of a code point, as a `SCRIPT_` constant |
 | `script_name(cp)` | the name of the script, such as `Latin` |
+| `script_extensions(out, cp)` | writes the scripts of a code point into the buffer of the caller; a code point with no extension list gives its one script |
+| `script_value_name(s)` | the name of a script from its `SCRIPT_` constant |
+| `block_name(cp)` | the name of the block, such as `Basic Latin`; `No_Block` when there is none |
+| `block_start(cp)`, `block_end(cp)` | the first and the last code point of the block; -1 when there is none |
+| `age(cp)` | the major and the minor number of the Unicode release that assigned the code point; 0 and 0 when no release did |
 | `width(cp)` | the East Asian width of a code point, as a `WIDTH_` constant |
 | `width_name(cp)` | the name of the width, such as `Wide` |
 | `char_width(cp)` | the width of one code point in terminal columns: 0, 1, 2 or 3; a control character gives -1 |
@@ -289,6 +294,27 @@ It holds for the bracket type and partner too. The package agrees with
 Python on the decimal value, the digit value and the mapping. Python
 holds an older release, so this holds for its code points only.
 
+## Script extensions, blocks and age
+
+Many marks and signs belong to more than one script. The `script`
+call gives the one script of the file `Scripts.txt`. The call
+`script_extensions` gives the list of the file `ScriptExtensions.txt`.
+It gives the one script for a code point that has no list.
+
+The `block_name` call gives the name as `Blocks.txt` spells it, such as
+`Latin-1 Supplement`. The ICU library spells the same names with
+underscores. The `age` call gives the release that first assigned the
+code point.
+
+```goose
+var out: i64[>..] = [];
+unicode::script_extensions(out, 0x30FC);   // Hiragana and Katakana
+let major, minor = unicode::age(0x1F600);  // 6 and 1
+```
+
+The package agrees with the ICU library on every code point for the
+three properties.
+
 ## Emoji and identifiers
 
 The emoji calls give the properties of the emoji data file of the
@@ -491,6 +517,10 @@ print(unicode::char_width_cjk(0xA1));    // 2
   Rust `unicode_names2` and ICU give no sequence. The ICU function knows
   the names and the corrections only, and no other alias. A query above
   128 bytes gives -1, and the call has no fault code.
+- A block name keeps the spelling of the file of the standard. A code
+  point in no block gives `No_Block`, and the block range calls give -1. The
+  numbers of the scripts follow the order of the names in the file. A
+  later release can add a script and move the numbers. Compare the name.
 - The `joining_group` call gives a number and not a named constant. The
   groups follow the order of the names in the file. A later release can
   add a group and move the numbers. Compare the name, not the number.
@@ -627,6 +657,7 @@ goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/lookup.goose
 goose run examples/chars.goose
+goose run examples/scripts.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -672,6 +703,7 @@ python3 make_flags_data.py
 python3 make_line_data.py
 python3 make_name_data.py
 python3 make_char_data.py
+python3 make_script_data.py
 python3 diff_line.py
 ```
 
