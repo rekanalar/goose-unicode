@@ -8,6 +8,7 @@ publish = false
 unicode-width = "0.2.2"
 unicode-bidi = "0.3.18"
 unicode-case-mapping = "1.0.0"
+unicode-linebreak = "0.1.5"
 
 [[bin]]
 name = "width"
@@ -20,6 +21,10 @@ path = "bidi.rs"
 [[bin]]
 name = "title"
 path = "title.rs"
+
+[[bin]]
+name = "linebreak"
+path = "linebreak.rs"
 
 [profile.release]
 opt-level = 2

@@ -12,6 +12,10 @@ double u_getNumericValue_78(int32_t c);
 int32_t u_charName_78(int32_t codepoint, int32_t nameChoice, char* buffer, int32_t bufferLength, int32_t* err);
 int32_t u_charDirection_78(int32_t c);
 int32_t u_strToTitle_78(uint16_t* dest, int32_t destCapacity, const uint16_t* src, int32_t srcLength, const uint16_t* localeID, const uint16_t* pivot, int32_t* err);
+void* ubrk_open_78(int32_t type, const char* locale, const uint16_t* text, int32_t textLength, int32_t* status);
+int32_t ubrk_next_78(void* bi);
+int32_t ubrk_getRuleStatus_78(void* bi);
+void ubrk_close_78(void* bi);
 */
 import "C"
 
@@ -360,6 +364,48 @@ func main() {
 				out = append(out, rune(dest[i]))
 			}
 			fmt.Fprintf(w, "%s\n", hexes(string(out)))
+		}
+	case "icelines":
+		// Each input line holds the code points of one text in hex. The
+		// output holds the break offsets of the ICU line iterator, in code
+		// points, each followed by m for a hard break.
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var units []uint16
+			var starts []int
+			idx := 0
+			for _, f := range strings.Fields(sc.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				for _, u := range utf16.Encode([]rune{v}) {
+					units = append(units, u)
+					starts = append(starts, idx)
+				}
+				idx++
+			}
+			starts = append(starts, idx)
+			if len(units) == 0 {
+				fmt.Fprintln(w)
+				continue
+			}
+			var err C.int32_t
+			bi := C.ubrk_open_78(2, nil, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
+			var parts []string
+			for {
+				p := int(C.ubrk_next_78(bi))
+				if p < 0 {
+					break
+				}
+				st := int(C.ubrk_getRuleStatus_78(bi))
+				mark := ""
+				if st >= 100 && st < 200 {
+					mark = "m"
+				}
+				parts = append(parts, fmt.Sprintf("%d%s", starts[p], mark))
+			}
+			C.ubrk_close_78(bi)
+			fmt.Fprintln(w, strings.Join(parts, " "))
 		}
 	case "titlecp":
 		// The title case of every code point. The lines hold the code

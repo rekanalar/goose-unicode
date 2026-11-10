@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.10.0";
+import unicode from "rekanalar/goose-unicode@v0.11.0";
 ```
 
 ## API
@@ -89,6 +89,8 @@ import unicode from "rekanalar/goose-unicode@v0.10.0";
 | `is_word_like(s, start, end)` | true when the segment holds a letter, a number or an ideograph |
 | `sentence_next(s, at)` | the end of the sentence that starts at the byte offset; gives the code and the end |
 | `sentence_count(s)` | the number of sentences in the text |
+| `line_break_class(cp)` | the `Line_Break` class of a code point, as an `LB_` constant, before rule LB1 resolves it |
+| `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31; gives the code and the offset of the first bad byte |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
 
 The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
@@ -299,6 +301,32 @@ A malformed byte forms a segment of its own. The time of every call is
 linear in the text. A call reads ahead past the marks that join to one
 code point only. A sentence read stops at the next terminator.
 
+## Line breaking
+
+The `line_breaks` call gives the places where a line may end. It uses
+the rules LB1 to LB31 of the Unicode line breaking standard (UAX #14). It
+writes one entry for each break into the buffer of the caller. An entry
+holds the byte offset times two, plus `BREAK_MANDATORY` (1) for a hard
+break. The end of a text that is not empty is the last break, and it is
+mandatory. An empty text holds no break.
+
+```goose
+var brk: i64[>..] = [];
+let code, off = unicode::line_breaks(brk, "a b\nc");
+// brk is [4, 9, 11]: after "a ", after the line feed, at the end
+```
+
+The `line_break_class` call gives the class of one code point as it
+stands in `LineBreak.txt`. The call `line_breaks` resolves the classes
+AI, SG, XX, SA and CJ by the default rule LB1. It uses the general
+category, the East Asian width and the emoji flag where the rules name
+them.
+
+The package agrees with every case of `LineBreakTest.txt`. It agrees
+with the ICU line iterator on 25,000 random texts. Rust
+`unicode-linebreak` holds an older release of the tables. Python and Go
+have no such call in the standard library or in `x/text`.
+
 ## Bidirectional text
 
 The `bidi_levels` call runs the Unicode bidirectional algorithm (UAX #9)
@@ -413,6 +441,10 @@ print(unicode::char_width_cjk(0xA1));    // 2
   the flag of Node from the last rule that built the segment. Node can
   differ for a segment that joins an apostrophe, a colon or a connector
   to other code points.
+- The line breaks follow the default rules and no tailoring. They give no
+  dictionary break inside Thai, Lao, Khmer or Burmese. The ICU iterator
+  breaks those scripts with a dictionary, so it gives other breaks
+  there. The package leaves the width of a line to the caller.
 - The bidirectional calls treat a paragraph as one line. A caller that
   breaks a paragraph into lines passes the levels of each line to
   `bidi_order`. The rules L3 and L4 depend on the renderer, and the
@@ -475,6 +507,11 @@ beyond the reference libraries.
   A text of open brackets or of deep embeddings cannot exhaust the
   memory.
   The Go library and the Rust crate bound the same values.
+- The line break call decodes the text into one packed number for each
+  code point. It reads at most two units ahead. The time is linear in the
+  bytes. A hostile text of spaces, combining marks, regional indicators,
+  quotes or digits cannot take quadratic time. The text is at most
+  `MAX_INPUT` bytes, and the arrays hold two numbers for each code point.
 - The width walk of a text holds one small state and reads the text from
   the end. The time is linear in the bytes. A hostile text of joiners,
   regional indicators or variation selectors cannot take quadratic time.
@@ -527,6 +564,7 @@ goose run examples/width.goose
 goose run examples/title.goose
 goose run examples/bidi.goose
 goose run examples/flags.goose
+goose run examples/linebreak.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -549,7 +587,7 @@ python3 make_width_data.py
 The scripts need the files of the Character Database. The first argument
 of each script names the directory that holds them. The default is the
 directory `tmp/ucd` of the management repository. The files come from
-`https://www.unicode.org/Public/17.0.0/ucd/`. The word and sentence break
+`https://www.unicode.org/Public/17.0.0/ucd/`. The word, sentence and line break
 files sit in its `auxiliary` directory. The general category file sits in
 its `extracted` directory.
 
@@ -569,6 +607,8 @@ python3 make_utf32_data.py
 python3 make_width_data.py
 python3 make_title_data.py
 python3 make_flags_data.py
+python3 make_line_data.py
+python3 diff_line.py
 ```
 
 The title script checks its table against the Go library and the Rust

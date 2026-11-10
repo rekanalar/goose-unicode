@@ -37,7 +37,9 @@ import sentence;
 import width_data;
 import width;
 import bidi_data;
+import linebreak_data;
 import bidi;
+import linebreak;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";

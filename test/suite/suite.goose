@@ -35,3 +35,5 @@ import title_cases;
 import title_suite;
 import flags_cases;
 import flags_suite;
+import line_cases;
+import line_suite;
