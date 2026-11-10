@@ -20,6 +20,7 @@ import case_full_data;
 import table;
 import utf8;
 import utf16;
+import utf32;
 import norm;
 import casing;
 import property;
@@ -41,6 +42,7 @@ const ERR_BAD_FORM: i64 = 3;       // the normalization form is unknown
 const ERR_TOO_LONG: i64 = 4;       // the input or the result is above its bound
 const ERR_BAD_ARG: i64 = 5;        // an argument is out of range
 const ERR_BAD_UTF16: i64 = 6;      // the bytes are not well formed UTF-16
+const ERR_BAD_UTF32: i64 = 7;      // the bytes are not well formed UTF-32
 
 // ---- bounds ---------------------------------------------------------
 const MAX_INPUT: i64 = 1048576;    // bytes of input

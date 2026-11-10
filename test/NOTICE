@@ -33,8 +33,9 @@ The files of the Character Database that the scripts read:
   Jamo.txt
 
 The UTF-16 test vectors come from the Go, the Node and the Rust
-libraries. The script writes numbers only. The source code of those
-libraries is under the licenses of those projects.
+libraries. The UTF-32 test vectors come from the codecs of Python. The
+scripts write numbers only. The source code of those libraries is under
+the licenses of those projects.
 
 The scripts check each table against a second source. The second source
 is the Go standard library, the Go packages golang.org/x/text/unicode/norm,

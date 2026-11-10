@@ -9,7 +9,8 @@ The package validates UTF-8 and names the byte offset of the first
 malformed byte. It converts text to the four normalization forms. It
 converts case and folds case for caseless compare. It gives the general
 category and the combining class of a code point. It splits text into
-grapheme clusters, words and sentences. It reads and writes UTF-16.
+grapheme clusters, words and sentences. It reads and writes UTF-16 and
+UTF-32.
 
 Pure Goose, no C.
 
@@ -38,6 +39,9 @@ import unicode from "rekanalar/goose-unicode@v0.4.0";
 | `utf16_encode(out, cps, big_endian)` | writes the UTF-16 bytes of the code points into the buffer of the caller |
 | `utf16_rune_len(cp)` | the number of UTF-16 units of the code point: 1, 2 or 0 |
 | `utf16_is_surrogate(cp)` | true when the code point is in the range U+D800 to U+DFFF |
+| `utf32_decode(out, s, big_endian)` | reads the UTF-32 bytes of the text and writes the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
+| `utf32_encode(out, cps, big_endian)` | writes the UTF-32 bytes of the code points into the buffer of the caller |
+| `utf32_rune_len(cp)` | 1 for a code point that UTF-32 can hold, 0 for the rest |
 | `normalize(out, form, s)` | writes the text in the given form into the buffer of the caller |
 | `is_normalized(form, s)` | true when the text is already in the given form |
 | `to_upper(out, s)` | writes the text in upper case with the simple mappings |
@@ -147,6 +151,33 @@ unicode::utf16_encode(out, cps[..], false);
 print(out);   // H i
 ```
 
+## UTF-32
+
+The package reads and writes UTF-32 in both byte orders. The byte order
+is the last argument of the two calls. Every code point takes one unit
+of four bytes.
+
+A surrogate and a value above U+10FFFF are faults. The call gives
+`ERR_BAD_UTF32` and the byte offset of the first bad byte. The buffer of
+the caller stays empty. A length that no count of units gives, such as
+five bytes, is a fault too. The offset names the start of the short
+unit.
+
+The strict codecs of Python refuse a surrogate too. A plain slice of
+`u32` in Rust holds no rule at all. Go holds no UTF-32 library and Node
+rejects UTF-32, so the vectors of the test suite come from Python only.
+
+The package does not read the byte order mark. A caller that reads a
+file with a mark removes the first four bytes itself.
+
+```goose
+var cps: i64[>..] = [];
+unicode::utf8_decode(cps, "Hi");
+var out: u8[>..] = [];
+unicode::utf32_encode(out, cps[..], false);
+print(out);   // H i and two zero bytes
+```
+
 ## Properties
 
 The property calls take one code point. Each lookup is a binary search
@@ -219,8 +250,7 @@ code point only. A sentence read stops at the next terminator.
   not reorder a text by the bidirectional algorithm. Python has no such
   call in the standard library. Go holds the algorithm in
   `golang.org/x/text/unicode/bidi`. Rust holds the `unicode-bidi` crate.
-- The package reads UTF-8 and UTF-16. It does not read UTF-32. Go holds
-  `unicode/utf32`. Rust holds the `encoding` crates.
+- The package reads UTF-8, UTF-16 and UTF-32.
 - The package does not give the width of the text for a terminal. The East
   Asian width is not a terminal width. Rust holds the `unicode-width`
   crate. Go holds `golang.org/x/text/width`.
@@ -244,8 +274,9 @@ beyond the reference libraries.
 
 - Every call checks the length of its input before any other work. The
   limit is `MAX_INPUT` of 1,048,576 bytes. A longer input gives
-  `ERR_TOO_LONG` and no work starts. The UTF-16 encoder counts code
-  points, not bytes, so it takes at most 1,048,576 code points.
+  `ERR_TOO_LONG` and no work starts. The UTF-16 and UTF-32 encoders
+  count code points, not bytes, so they take at most 1,048,576 code
+  points.
 - Every call that writes text checks the length of its result. The limit is
   `MAX_OUTPUT` of 4,194,304 bytes. A longer result gives `ERR_TOO_LONG`
   and writes nothing. A compatibility decomposition of a long text can
@@ -297,6 +328,7 @@ goose run examples/case.goose
 goose run examples/props.goose
 goose run examples/words.goose
 goose run examples/utf16.goose
+goose run examples/utf32.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -322,6 +354,7 @@ python3 make_props_data.py
 python3 make_case_full_data.py
 python3 make_segment_data.py
 python3 make_utf16_data.py
+python3 make_utf32_data.py
 ```
 
 ## License
