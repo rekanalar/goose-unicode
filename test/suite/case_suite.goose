@@ -19,6 +19,11 @@ fn cps_of(s: const u8[:]) -> i64[>..] {
 }
 
 // The simple upper case of every code point of the table.
+fn case_check(ok: bool, name: const u8[:]) -> i64 {
+    if !ok { print("FAIL: case ", name, "\n"); return 1; }
+    return 0;
+}
+
 fn case_upper() -> i64 {
     var bad = 0;
     for k in 0..PC_UP.len / 2 {
@@ -208,5 +213,83 @@ fn run_case() -> i64 {
     bad += case_fold_equal();
     bad += case_faults();
     bad += case_bound();
+    bad += case_nfkc_fold();
     return bad;
 }
+
+// The NFKC case fold: the fixed strings from the ICU library, the rows
+// of the NFKC_CF table, and the faults.
+fn case_nfkc_fold() -> i64 {
+    var bad = 0;
+    var out: u8[>..] = [];
+    var want: u8[>..] = [];
+    // The fixed strings. Each holds the fold of one text, so the fold
+    // of the fold is the fold itself.
+    for t in 0..CF_FIXED_OFF.len - 1 {
+        want.clear();
+        unicode::encode_all(want, CF_POOL[CF_FIXED_OFF[t]..CF_FIXED_OFF[t + 1]]);
+        let code, off = unicode::nfkc_casefold(out, want[..]);
+        if code != unicode::OK || out[..] != want[..] {
+            print("FAIL: nfkc fold idempotent at text ", t, " code ", code, "\n");
+            bad += 1;
+            if bad > 5 { return bad; }
+        }
+    }
+    // The rows: the fold of one listed code point is its mapped text.
+    for r in 0..CF_CP.len {
+        want.clear();
+        unicode::encode_all(want, CF_POOL[CF_ROW_OFF[r]..CF_ROW_OFF[r + 1]]);
+        var one: u8[>..] = [];
+        unicode::utf8_encode(one, CF_CP[r]);
+        let code, off = unicode::nfkc_casefold(out, one[..]);
+        if code != unicode::OK || out[..] != want[..] {
+            print("FAIL: nfkc fold of U+", CF_CP[r], " code ", code, "\n");
+            bad += 1;
+            if bad > 5 { return bad; }
+        }
+    }
+    // Two spellings of one text fold to the same bytes.
+    var a: u8[>..] = [];
+    var b: u8[>..] = [];
+    push_utf8(a, 0x1E9E);
+    append_str(b, "SS");
+    let c1, _ = unicode::nfkc_casefold(out, a[..]);
+    var fa: u8[>..] = [];
+    for k in 0..out.len { fa.push(out[k]); }
+    let c2, _ = unicode::nfkc_casefold(out, b[..]);
+    var fb: u8[>..] = [];
+    for k in 0..out.len { fb.push(out[k]); }
+    bad += case_check(c1 == unicode::OK && c2 == unicode::OK && fa[..] == fb[..], "sharp s pair");
+    // A bad byte gives its offset and an empty buffer.
+    var s2: u8[>..] = [];
+    append_str(s2, "ab\xFFcd");
+    let c3, o3 = unicode::nfkc_casefold(out, s2[..]);
+    bad += case_check(c3 == unicode::ERR_BAD_UTF8 && o3 == 2 && out.len == 0, "bad byte");
+    // A text above MAX_INPUT gives ERR_TOO_LONG.
+    var big: u8[>..] = [];
+    for i in 0..unicode::MAX_INPUT + 1 { big.push('a'); }
+    let c4, _ = unicode::nfkc_casefold(out, big[..]);
+    bad += case_check(c4 == unicode::ERR_TOO_LONG && out.len == 0, "input above the bound");
+    // A hostile text of the longest expansion grows the result above
+    // MAX_OUTPUT. U+FDFA folds to five code points.
+    var many: u8[>..] = [];
+    var i: i64 = 0;
+    while i < unicode::MAX_INPUT {
+        push_utf8(many, 0xFDFA);
+        i += 3;
+    }
+    let c5, _ = unicode::nfkc_casefold(out, many[..]);
+    bad += case_check(c5 == unicode::ERR_TOO_LONG && out.len == 0, "output above the bound");
+    // A linear hostile text runs clean.
+    var wall: u8[>..] = [];
+    for i in 0..unicode::MAX_INPUT { wall.push('a'); }
+    let c6, _ = unicode::nfkc_casefold(out, wall[..]);
+    bad += case_check(c6 == unicode::OK && out.len == unicode::MAX_INPUT, "1 MiB of ASCII");
+    // A surrogate is a bad byte.
+    var sur: u8[>..] = [];
+    append_str(sur, "a\xED\xA0\x80b");
+    let c7, o7 = unicode::nfkc_casefold(out, sur[..]);
+    bad += case_check(c7 == unicode::ERR_BAD_UTF8 && o7 == 1, "surrogate");
+    return bad;
+}
+

@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.16.0";
+import unicode from "rekanalar/goose-unicode@v0.17.0";
 ```
 
 ## API
@@ -54,6 +54,7 @@ import unicode from "rekanalar/goose-unicode@v0.16.0";
 | `fold_case(out, s)` | writes the text in its case fold, for caseless compare |
 | `to_upper_full(out, s)` | writes the text in upper case with the full mappings |
 | `to_lower_full(out, s)` | writes the text in lower case with the full mappings and the final sigma |
+| `nfkc_casefold(out, s)` | writes the NFKC case fold of the text: the match key of a caseless and compatibility-insensitive compare |
 | `to_title(out, s)` | writes the text in title case: the first cased letter of each word in title case, the rest in lower case |
 | `titlecase_cp(out, cp)` | writes the title case mapping of one code point; a code point with no mapping gives itself |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
@@ -364,6 +365,25 @@ give false. The `property_by_name` call ignores the case of ASCII letters
 and nothing else. It gives -1 for the loose names of ICU, such as
 `whitespace`.
 
+## The NFKC case fold
+
+The `nfkc_casefold` call gives the match key of a compare that
+ignores case, compatibility and default ignorables at once. Two texts
+with the same NFKC case fold differ in none of the three. The
+identifier checks and the loose matchers of the standard use this
+form.
+
+```goose
+var out: u8[>..] = [];
+let code, offset = unicode::nfkc_casefold(out, "Straße");
+// the fold of the sharp s is "strasse"
+```
+
+The order is the order of the standard. The text decomposes first.
+Then each code point folds. Then the default ignorables drop out.
+One composition runs over the whole text. It runs last, because
+folded characters interact.
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -605,6 +625,12 @@ if code == unicode::OK && out[0] == -1 {
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
+- Only the ICU library holds the NFKC case fold as one call
+  (`unorm2_getNFKCCasefoldInstance`). Python `str.casefold`, Node,
+  Go and the Rust crates hold no such call. The package holds it
+  whole, and the suite replays every row of the `NFKC_CF` table of
+  the standard. The is-normalized check of ICU on this form stays
+  out, because no other reference and no data table support it.
 - The binary properties hold the properties that ICU, Node and Go
   expose. The contributory `Other_` properties stay out, and so do the
   deprecated `Hyphen` and `Grapheme_Link`. The properties with more than
@@ -723,6 +749,11 @@ beyond the reference libraries.
   take quadratic time. A key above `MAX_OUTPUT` gives `ERR_TOO_LONG`
   and writes nothing.
 
+- The fold of a hostile text is one decode, one decomposition, one
+  fold pass and one composition. The composition sorts long runs of
+  marks with a counting sort. A hostile run of marks cannot take
+  quadratic time. A result above `MAX_OUTPUT` gives `ERR_TOO_LONG`
+  and writes nothing.
 - The `property_by_name` call stops a query above 28 bytes before any
   compare. The longest name holds 28 bytes. A search makes at most 53
   compares of the length of the query. A hostile query cannot take more
@@ -758,6 +789,7 @@ goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/collate.goose
 goose run examples/properties.goose
+goose run examples/casefold.goose
 goose run examples/lookup.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
@@ -811,6 +843,7 @@ python3 diff_line.py
 python3 make_coll_data.py
 python3 diff_coll.py
 python3 diff_props.py
+python3 make_casefold_data.py
 ```
 
 The collation script reads the root collation table and the conformance
