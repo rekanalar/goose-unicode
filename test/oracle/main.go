@@ -542,6 +542,39 @@ func main() {
 			}
 			fmt.Fprintf(w, "%s\n", hexes(string(utf16.Decode(dest[:int(n)]))))
 		}
+	case "icubrk":
+		// The word boundaries of one text for one locale. The argument is
+		// the locale. Each input line holds the code points of one text
+		// in hex, separated by spaces. The output holds the offsets of
+		// the boundaries from the ICU library.
+		tag := C.CString(os.Args[2])
+		defer C.free(unsafe.Pointer(tag))
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var units []uint16
+			for _, f := range strings.Fields(sc.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				units = append(units, uint16(v))
+			}
+			var err C.int32_t
+			bi := C.ubrk_open_79(1, tag, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
+			if bi == nil {
+				fmt.Fprintf(w, "error %d\n", int(err))
+				continue
+			}
+			var out []string
+			for {
+				p := int(C.ubrk_next_79(bi))
+				if p < 0 {
+					break
+				}
+				out = append(out, fmt.Sprintf("%d:%d", p, int(C.ubrk_getRuleStatus_79(bi))))
+			}
+			fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
+			C.ubrk_close_79(bi)
+		}
 	case "icuprop":
 		// The runs of the value of one ICU integer property, as the long
 		// name of the value. The argument is the number of the property.
