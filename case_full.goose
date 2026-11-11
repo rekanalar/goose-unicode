@@ -54,6 +54,7 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64, locale: i64) -> i64, i
     out.clear();
     if !locale_ok(locale) { return ERR_BAD_ARG, -1; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
+    if kind == 0 && locale == LOCALE_EL { return greek_upper(out, s); }
     var i: i64 = 0;
     while i < s.len {
         let cp, n = decode_at(s, i);
@@ -62,10 +63,7 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64, locale: i64) -> i64, i
             return ERR_BAD_UTF8, i;
         }
         if kind == 0 {
-            if !push_upper_rule(out, s, i, cp, locale)
-                && !push_full(out, UFULL_CP[..], UFULL_OFF[..], UFULL_POOL[..], cp) {
-                push_utf8(out, upper_cp(cp));
-            }
+            if !push_upper_rule(out, s, i, cp, locale) { push_upper_full(out, cp); }
         } else {
             push_lower_full(out, s, i, n, cp, locale);
         }
@@ -102,6 +100,28 @@ fn push_full(out: u8[>..]&, cps: const i64[:], offs: const i64[:], pool: const i
     return true;
 }
 
+// True when a cased letter holds at or after the byte offset j, with only
+// case ignorable characters between. A bad byte ends the scan.
+fn cased_follows(s: const u8[:], j: i64) -> bool {
+    var k: i64 = j;
+    while k < s.len {
+        let cp, len = decode_at(s, k);
+        if cp < 0 { return false; }
+        k += len;
+        if is_ignorable(cp) { continue; }
+        return is_cased(cp);
+    }
+    return false;
+}
+
+// Writes the full upper case of the code point. A code point with no
+// entry gives itself.
+fn push_upper_full(out: u8[>..]&, cp: i64) {
+    if !push_full(out, UFULL_CP[..], UFULL_OFF[..], UFULL_POOL[..], cp) {
+        push_utf8(out, upper_cp(cp));
+    }
+}
+
 // The rule of the final sigma at the byte offset i of the text. The
 // sigma is final when a cased letter holds before it and no cased
 // letter holds after it, with case ignorable characters between.
@@ -117,15 +137,5 @@ fn sigma_is_final(s: const u8[:], i: i64, n: i64) -> bool {
         break;
     }
     if !cased_before { return false; }
-    var cased_after = false;
-    j = i + n;
-    while j < s.len {
-        let cp, len = decode_at(s, j);
-        if cp < 0 { break; }
-        j += len;
-        if is_ignorable(cp) { continue; }
-        cased_after = is_cased(cp);
-        break;
-    }
-    return !cased_after;
+    return !cased_follows(s, i + n);
 }

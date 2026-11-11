@@ -132,6 +132,31 @@ def oracle_node(script, *args, stdin=None):
     return r.stdout.splitlines()
 
 
+def icu_case(tag, kind, lines):
+    """Run ICU over the texts and return one line per text."""
+    return oracle_go("icelocale", tag, kind, stdin="\n".join(lines) + "\n")
+
+
+def hexline(cps):
+    """The code points as a line of hex, for the oracles."""
+    return " ".join("%04X" % c for c in cps)
+
+
+def icu_rows(texts, tag, kind):
+    """The texts whose ICU result in the locale differs from the root, with
+    the result as a list of code points."""
+    lines = [hexline(t) for t in texts]
+    loc = icu_case(tag, kind, lines)
+    root = icu_case("und", kind, lines)
+    out = []
+    for t, a, b in zip(texts, loc, root):
+        if a.startswith("error") or b.startswith("error"):
+            fail("ICU gave an error for %s" % hexline(t))
+        if a != b:
+            out.append((t, [int(x, 16) for x in a.split()]))
+    return out
+
+
 def runs_of(values, skip=None):
     """Turn a list indexed by code point into (start, end, value) runs."""
     out = []

@@ -2,11 +2,15 @@
 //
 // The rows of the Unicode special casing file that name a language: the
 // Turkish and Azerbaijani rules for the letter i, and the Lithuanian rules
-// for the dot above. Four conditions of that file read the text around a
-// letter. Each condition is a scan that stops at the first character of
-// combining class 0 or 230, or at a bad byte. A scan starts at a trigger.
-// A trigger is a letter of class 0 or the mark U+0307 of class 230, so
-// the scans of two triggers do not overlap and the time stays linear.
+// for the dot above. Three more rules follow the ICU library: the Greek
+// upper case (greek_upper.goose), the Dutch ij title case (title.goose) and
+// the Armenian ligature U+0587.
+//
+// Four conditions of that file read the text around a letter. Each
+// condition is a scan that stops at the first character of combining class
+// 0 or 230, or at a bad byte. A scan starts at a trigger. A trigger is a
+// letter of class 0 or the mark U+0307 of class 230, so the scans of two
+// triggers do not overlap and the time stays linear.
 namespace unicode;
 
 import std;
@@ -15,10 +19,13 @@ const LOCALE_ROOT: i64 = 0;  // no language rule
 const LOCALE_TR: i64 = 1;    // Turkish
 const LOCALE_AZ: i64 = 2;    // Azerbaijani
 const LOCALE_LT: i64 = 3;    // Lithuanian
+const LOCALE_EL: i64 = 4;    // Greek
+const LOCALE_NL: i64 = 5;    // Dutch
+const LOCALE_HY: i64 = 6;    // Armenian
 
-// True when the value is one of the four locale constants.
+// True when the value is one of the locale constants.
 fn locale_ok(locale: i64) -> bool {
-    return locale >= LOCALE_ROOT && locale <= LOCALE_LT;
+    return locale >= LOCALE_ROOT && locale <= LOCALE_HY;
 }
 
 fn is_turkic(locale: i64) -> bool {
@@ -43,6 +50,9 @@ fn locale_of(tag: const u8[:]) -> i64 {
     if l == 0x7472 || l == 0x747572 { return LOCALE_TR; }  // tr, tur
     if l == 0x617A || l == 0x617A65 { return LOCALE_AZ; }  // az, aze
     if l == 0x6C74 || l == 0x6C6974 { return LOCALE_LT; }  // lt, lit
+    if l == 0x656C || l == 0x656C6C { return LOCALE_EL; }  // el, ell
+    if l == 0x6E6C || l == 0x6E6C64 { return LOCALE_NL; }  // nl, nld
+    if l == 0x6879 || l == 0x687965 { return LOCALE_HY; }  // hy, hye
     return LOCALE_ROOT;
 }
 
@@ -111,6 +121,12 @@ fn more_above(s: const u8[:], j: i64) -> bool {
 fn push_upper_rule(out: u8[>..]&, s: const u8[:], i: i64, cp: i64, locale: i64) -> bool {
     if is_turkic(locale) && cp == 0x69 {
         push_utf8(out, 0x130);
+        return true;
+    }
+    // The Armenian ligature ech yiwn gives two capital letters.
+    if locale == LOCALE_HY && cp == 0x587 {
+        push_utf8(out, 0x535);
+        push_utf8(out, 0x54E);
         return true;
     }
     // The dot above after a soft dotted letter drops in Lithuanian.

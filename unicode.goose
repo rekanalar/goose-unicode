@@ -36,6 +36,8 @@ import script_data;
 import scripts_more;
 import flags;
 import case_locale;
+import greek_upper_data;
+import greek_upper;
 import case_full;
 import title;
 import segment_data;

@@ -52,3 +52,5 @@ import coll_cases;
 import coll_suite;
 import locale_cases;
 import locale_suite;
+import greek_cases;
+import greek_suite;

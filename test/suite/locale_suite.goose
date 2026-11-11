@@ -121,7 +121,7 @@ fn loc_bad_locale() -> i64 {
     var bad = 0;
     var out: u8[>..] = [];
     var text: u8[>..] = [];
-    for loc in [-1, 4, 100] {
+    for loc in [-1, 7, 100] {
         let c, o = unicode::to_upper_locale(out, text[..], loc);
         if c != unicode::ERR_BAD_ARG || o != -1 || out.len != 0 {
             print("FAIL: upper locale ", loc, "\n");

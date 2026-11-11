@@ -1,4 +1,5 @@
-// The locale aware case mapping: the Turkish and Lithuanian rules.
+// The locale aware case mapping: the Turkish, Lithuanian, Greek, Dutch and
+// Armenian rules.
 import std;
 import unicode from "..";
 
@@ -28,7 +29,24 @@ fn main() {
     unicode::to_upper_locale(out, text[..], unicode::LOCALE_LT);
     print(out[..], "\n");
 
+    // Greek: the upper case drops the accents. The word "or" keeps its tonos.
+    unicode::to_upper_locale(out, "αύριο ή", unicode::LOCALE_EL);
+    print(out[..], "\n");
+
+    // Dutch: a word that starts with ij titles as IJ.
+    unicode::to_title_locale(out, "ijsselmeer", unicode::LOCALE_NL);
+    print(out[..], "\n");
+
+    // Armenian: the ligature U+0587 gives two letters.
+    var lig: u8[>..] = [];
+    unicode::utf8_encode(lig, 0x587);
+    unicode::to_upper_locale(out, lig[..], unicode::LOCALE_HY);
+    print(out[..], "\n");
+    unicode::to_title_locale(out, lig[..], unicode::LOCALE_HY);
+    print(out[..], "\n");
+
     // A language tag names the locale. An unknown tag gives the root.
     print("locale_of(\"tr-TR\") = ", unicode::locale_of("tr-TR"), "\n");
+    print("locale_of(\"el-GR\") = ", unicode::locale_of("el-GR"), "\n");
     print("locale_of(\"en\") = ", unicode::locale_of("en"), "\n");
 }

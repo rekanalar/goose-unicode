@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.21.0";
+import unicode from "rekanalar/goose-unicode@v0.22.0";
 ```
 
 ## API
@@ -57,10 +57,10 @@ import unicode from "rekanalar/goose-unicode@v0.21.0";
 | `nfkc_casefold(out, s)` | writes the NFKC case fold of the text: the match key of a caseless and compatibility-insensitive compare |
 | `to_title(out, s)` | writes the text in title case: the first cased letter of each word in title case, the rest in lower case |
 | `titlecase_cp(out, cp)` | writes the title case mapping of one code point; a code point with no mapping gives itself |
-| `to_upper_locale(out, s, locale)` | writes the upper case of `s` under the rules of the locale |
+| `to_upper_locale(out, s, locale)` | writes the upper case of `s` under the rules of the locale: `LOCALE_ROOT`, `LOCALE_TR`, `LOCALE_AZ`, `LOCALE_LT`, `LOCALE_EL`, `LOCALE_NL` or `LOCALE_HY` |
 | `to_lower_locale(out, s, locale)` | writes the lower case of `s` under the rules of the locale, with the final sigma |
 | `to_title_locale(out, s, locale)` | writes the title case of `s` under the rules of the locale |
-| `locale_of(tag)` | the locale constant of a language tag, such as `tr-TR`; the root locale for any other tag |
+| `locale_of(tag)` | the locale constant of a language tag, such as `tr-TR`, `el` or `nl_BE`; the root locale for any other tag |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
 | `category_group(cp)` | the group of the category, as a `GROUP_` constant: letter, mark, number, punctuation, symbol, separator or other |
 | `is_letter_cased(cp)` | true for an upper case, a lower case and a title case letter |
@@ -218,13 +218,15 @@ words. The package follows the standard in all these cases.
 ## Case with a locale
 
 The `LOCALE_TR`, `LOCALE_AZ` and `LOCALE_LT` constants name the language
-rules of the special casing file of the standard. The `to_upper_locale`,
-`to_lower_locale` and `to_title_locale` calls take one of the constants.
+rules of the special casing file of the standard. Three more constants
+name rules of the ICU library. `LOCALE_EL` is the Greek upper case.
+`LOCALE_NL` is the Dutch IJ title case. `LOCALE_HY` is the Armenian ligature. The `to_upper_locale`, `to_lower_locale` and `to_title_locale`
+calls take one of the constants.
 
 A script compares every scalar value with the ICU library, release 79.1, for
-the three locales and the three cases. One difference stays. It is the title
+the six locales and the three cases. One difference stays. It is the title
 case of the lone U+0345. There the package follows the character database,
-as `to_title` does. The suite replays 13,311 texts around the rules against ICU.
+as `to_title` does. The suite replays texts around the rules against ICU.
 Node judges the upper and lower case of the code points that it holds.
 
 Turkish and Azerbaijani map the small i to U+0130, the letter with a dot.
@@ -248,12 +250,39 @@ unicode::utf8_encode(text, 0xCC);   // Ì
 unicode::to_lower_locale(out, text[..], unicode::LOCALE_LT);  // i, dot above, grave
 ```
 
-The `locale_of` call reads the language subtag of a language tag. The subtag
-has two or three ASCII letters. It ends at the end of the tag, at a hyphen or
-at an underscore. The call gives `LOCALE_TR` for `tr`, `TR`, `tr-TR`, `tr_TR` and `tur`, and the
-root locale for any other subtag. With `LOCALE_ROOT` each call gives the
-result of the call without a locale. A locale value that is no constant
-gives `ERR_BAD_ARG`.
+Greek upper case drops the accents of the letters. A vowel with a dialytika
+keeps it. An iota subscript becomes a spacing capital iota. An iota or
+ypsilon after an accented vowel gains a dialytika. The word "or", a capital
+eta with an accent that stands alone, keeps its tonos. The lower case and the
+title case give the root result under `LOCALE_EL`.
+
+```goose
+unicode::to_upper_locale(out, "αύριο", unicode::LOCALE_EL);   // ΑΥΡΙΟ
+unicode::to_upper_locale(out, "ή", unicode::LOCALE_EL);       // Ή
+```
+
+Dutch title case gives `IJ` for a word that starts with `ij`. The rule holds
+for `i` with a combining acute before a `j` with an acute, and for the
+precomposed `í`. A combining mark after the digraph blocks the rule.
+
+```goose
+unicode::to_title_locale(out, "ijsselmeer", unicode::LOCALE_NL);   // IJsselmeer
+```
+
+Armenian maps the ligature U+0587 to two letters. The upper case gives
+U+0535 U+054E. The title case gives U+0535 U+057E. The root locale gives
+U+0535 U+0552 and U+0535 U+0582.
+
+The `locale_of` call reads the language subtag of a language tag.
+
+The subtag has two or three ASCII letters. It ends at the end of the tag, at a
+hyphen or at an underscore.
+
+The call gives `LOCALE_TR` for `tr`, `TR`, `tr-TR`, `tr_TR` and `tur`. It gives
+`LOCALE_EL` for `el` and `ell`, `LOCALE_NL` for `nl` and `nld`, and `LOCALE_HY`
+for `hy` and `hye`. It gives the root locale for any other subtag, `hyw`
+included. With `LOCALE_ROOT` each call gives the result of the call without a
+locale. A locale value that is no constant gives `ERR_BAD_ARG`.
 
 ## UTF-16
 
@@ -685,10 +714,23 @@ if code == unicode::OK && out[0] == -1 {
   accepts names from users also normalizes the text to NFC. It checks for
   look alike characters too, as UAX #31 and UAX #39 describe. The package
   gives the tests and no check of a whole name.
-- The case mapping holds the language rules of Turkish, Azerbaijani and
-  Lithuanian. The Greek upper case, the Dutch IJ title case and the
-  Armenian ligature U+0587 stay out. The ICU library, release 79.1, the
-  Rust crate `icu_casemap` and Node hold all three.
+- The case mapping holds the language rules of Turkish, Azerbaijani,
+  Lithuanian, Greek, Dutch and Armenian. Any other language gives the root
+  mapping. The word segmentation of the title case follows the default rules.
+- The title case starts at the first cased character of a word. ICU starts at
+  the first letter. So `1ij` under `LOCALE_NL` gives `1IJ`, and ICU gives `1ij`.
+  The same difference holds at the root: `1ij` gives `1Ij`.
+- Go `x/text` gives another Greek upper case than ICU for 125 single code
+  points. Some of them hold the accented capitals, such as U+0389 and U+0390.
+  Node and Rust give the same result as ICU for every single code point that
+  they hold. Rust differs from ICU on 1,564 of the 69,904 test texts.
+  Of these, 1,264 hold another number of code points, and 300 hold the marks
+  in another order. The package follows ICU on all 69,904 texts.
+- The Armenian ligature U+0587 gives two letters under `LOCALE_HY`. Node and
+  Go give the root mapping for it. The Rust crate gives the same as ICU.
+- The Dutch IJ rule applies to a dotless i before a j, as in ICU. Rust and Go
+  do not apply it there. Go titles the j before a combining mark, and ICU
+  does not. The package follows ICU.
 - The title case of `I` with a dot above differs from the Rust crate
   `icu_casemap` under Turkish. The crate keeps the dot. The package and
   ICU remove it, as the standard says.
@@ -907,6 +949,16 @@ beyond the reference libraries.
   compare. The longest name holds 28 bytes. A search makes at most 53
   compares of the length of the query. A hostile query cannot take more
   time.
+
+- The Greek upper case reads each code point once. One scan looks for a cased
+  letter after a capital eta. It runs only for an eta that does not follow a
+  cased letter. A hostile text cannot take quadratic time. The test suite runs
+  texts of 1 MiB. A bad byte gives `ERR_BAD_UTF8` and its offset, and the
+  result is empty.
+- The Dutch rule reads at most four code points after the first letter of a
+  word.
+- The Greek walk checks the length of its input and clears its buffer. A
+  caller that reaches it directly gets the same bound as the public calls.
 
 These risks stay.
 

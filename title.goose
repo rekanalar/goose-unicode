@@ -12,12 +12,66 @@ import std;
 
 // Writes the title case mapping of the code point under the locale. A code
 // point with no entry maps to itself. Turkish and Azerbaijani map i to U+0130.
+// Armenian maps the ligature U+0587 to U+0535 U+057E.
 fn push_title_locale(out: u8[>..]&, cp: i64, locale: i64) {
     if is_turkic(locale) && cp == 0x69 {
         push_utf8(out, 0x130);
         return;
     }
+    if locale == LOCALE_HY && cp == 0x587 {
+        push_utf8(out, 0x535);
+        push_utf8(out, 0x57E);
+        return;
+    }
     push_title(out, cp);
+}
+
+// The Dutch ij rule. The first cased character of a word titled to I or to
+// an I with acute, and the byte offset at is just after it. When the digraph
+// ij follows, in one of the forms of the ICU library, the j takes the title
+// case too. The forms are i j, i acute j acute, and i-acute j acute with
+// the precomposed letter. The j needs its own acute when the i had one. A
+// combining mark after the digraph blocks the rule. Writes the rest of the
+// digraph and returns the offset after it, or returns -1 and writes nothing.
+fn dutch_ij(out: u8[>..]&, s: const u8[:], at: i64, end: i64, first: i64) -> i64 {
+    if !is_dutch_i(first) { return -1; }
+    if at >= end { return -1; }
+    let c2, n2 = decode_at(s, at);
+    if c2 < 0 { return -1; }
+    var acute = first == 0xED || first == 0xCD;
+    var acute_first = false;
+    var j = c2;
+    var p = at + n2;
+    if !acute && c2 == 0x301 {
+        acute = true;
+        acute_first = true;
+        if p >= end { return -1; }
+        let c3, n3 = decode_at(s, p);
+        if c3 < 0 { return -1; }
+        j = c3;
+        p += n3;
+    }
+    if j != 0x6A && j != 0x4A { return -1; }
+    if acute {
+        if p >= end { return -1; }
+        let c4, n4 = decode_at(s, p);
+        if c4 != 0x301 { return -1; }
+        p += n4;
+    }
+    if p < end {
+        let c5, _ = decode_at(s, p);
+        if c5 >= 0 && category_group(c5) == GROUP_MARK { return -1; }
+    }
+    if acute_first { push_utf8(out, 0x301); }
+    push_utf8(out, 0x4A);
+    if acute { push_utf8(out, 0x301); }
+    return p;
+}
+
+// True when the code point starts the Dutch digraph: a plain i in its three
+// forms, or an i with an acute in its two forms.
+fn is_dutch_i(cp: i64) -> bool {
+    return cp == 0x49 || cp == 0x69 || cp == 0x131 || cp == 0xCD || cp == 0xED;
 }
 
 // Writes the title case mapping of the code point. A code point with no
@@ -68,6 +122,13 @@ fn to_title_locale(out: u8[>..]&, s: const u8[:], locale: i64) -> i64, i64 {
             if !seen && is_cased(cp) {
                 seen = true;
                 push_title_locale(out, cp, locale);
+                if locale == LOCALE_NL && is_dutch_i(cp) {
+                    let q = dutch_ij(out, s, i + n, end, cp);
+                    if q >= 0 {
+                        i = q;
+                        continue;
+                    }
+                }
             } else if seen {
                 push_lower_full(out, s, i, n, cp, locale);
             } else {
