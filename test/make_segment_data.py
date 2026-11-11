@@ -5,10 +5,10 @@ The word table holds the Word_Break class in bits 0 to 4 and the
 Extended_Pictographic flag in bit 5. The sentence table holds the
 Sentence_Break class. The sources are WordBreakProperty.txt,
 SentenceBreakProperty.txt and emoji-data.txt of the Unicode Character
-Database 17.0.0.
+Database 18.0.0.
 Second sources: an independent Python version of the rules splits every
 case of WordBreakTest.txt and SentenceBreakTest.txt, and the script fails
-if it disagrees with a file. Node (Intl.Segmenter, ICU 78) splits 20,000
+if it disagrees with a file. Node (Intl.Segmenter, ICU 78, which holds 17.0) splits 20,000
 random texts like the Python version and gives the same word-like flags.
 The random texts avoid the scripts that Node splits with a dictionary.
 Usage: make_segment_data.py [ucd directory]

@@ -6,7 +6,7 @@ Consortium. The license text is at
 https://www.unicode.org/license.txt
 
 The tables are built by the scripts under test/. Each script reads the
-files of the Unicode Character Database 17.0.0 and writes numbers only
+files of the Unicode Character Database 18.0.0 and writes numbers only
 into the package.
 
 The files of the Character Database that the scripts read:
@@ -35,6 +35,10 @@ The files of the Character Database that the scripts read:
   PropList.txt
   emoji-variation-sequences.txt
   extracted/DerivedGeneralCategory.txt
+  extracted/DerivedName.txt
+  confusables.txt of the Unicode security data
+  allkeys_CLDR.txt of the CLDR root collation, release 49
+  CollationTest_CLDR_NON_IGNORABLE.txt of the same release
 
 The UTF-16 test vectors come from the Go, the Node and the Rust
 libraries. The UTF-32 test vectors come from the codecs of Python. The
@@ -46,11 +50,13 @@ is the Go standard library, the Go packages golang.org/x/text/unicode/norm,
 golang.org/x/text/width and golang.org/x/text/unicode/bidi, the package
 golang.org/x/text/cases, the ICU library, Node with ICU and the
 unicodedata module of Python. The scripts fail when the sources differ.
-The scripts use the unicodedata module as a second check only, because
-it holds Unicode 16.0.0.
+The ICU library 79.1 holds Unicode 18.0.0, and it judges every code point.
+The Go packages and Node hold Unicode 17.0.0, so they judge the code
+points that 18.0.0 did not add. The scripts use the unicodedata module as
+a second check only, because it holds Unicode 16.0.0.
 
 The width tables and the width test vectors come from the Rust
-unicode-width crate 0.2.2 and from the files of the Character Database.
+unicode-width crate 0.2.3 and from the files of the Character Database.
 The crate is under the MIT license and the Apache License 2.0. The
 script test/make_width_data.py reads the crate through the oracle in
 test/oracle and writes numbers only. No source code of the crate is in

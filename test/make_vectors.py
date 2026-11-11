@@ -5,8 +5,9 @@ The cases hold numbers only. They come from three sources:
   NormalizationTest.txt   the conformance cases of the normalization standard
   GraphemeBreakTest.txt   the conformance cases of the cluster split
   the Go oracle           the simple case mappings and the categories
-The script checks the normalization cases against Node (ICU 78) and Go
-(Unicode 17.0.0) before it writes them, and it fails on a difference.
+The script checks the normalization cases against ICU 79 before it
+writes them. It checks the cases that 18.0.0 did not add against Node
+and Go too, which hold Unicode 17.0.0. It fails on a difference.
 Usage: make_vectors.py [ucd directory]
 """
 import os
@@ -39,27 +40,39 @@ def normalization():
             continue
         cols = line.split(";")[:5]
         cases.append([hexlist(c) for c in cols])
-    # Check the file against Node and Go.
+    # Check the file against ICU, which holds the release of the file and
+    # judges every case, and against Node and Go, which hold 17.0.0 and
+    # judge the cases that hold no code point of the newer release.
+    held = u.held()
     text = "\n".join("|".join(" ".join("%04X" % c for c in col) for col in case) for case in cases) + "\n"
-    node = u.oracle_node("normalize.mjs", stdin=text)
-    go = u.oracle_go("nt", stdin=text)
-    if len(node) != len(cases) or len(go) != len(cases):
-        u.fail("the oracle line counts differ")
-    for case, nl, gl in zip(cases, node, go):
+    old_cases = [case for case in cases if all(held[c] for col in case for c in col)]
+    old_text = "\n".join("|".join(" ".join("%04X" % c for c in col) for col in case) for case in old_cases) + "\n"
+
+    def check(who, lines, subset):
+        if len(lines) != len(subset):
+            u.fail("the %s oracle line count differs" % who)
+        for case, line in zip(subset, lines):
+            outs = [o.split() for o in line.split("|")]
+            # outs[col*4 + form] with forms NFC, NFD, NFKC, NFKD
+            def form(col, k):
+                return [int(x, 16) for x in outs[col * 4 + k]]
+            c1, c2, c3, c4, c5 = case
+            for col in range(5):
+                if form(col, 0) != (c2 if col < 3 else c4):
+                    u.fail("NFC differs from the file on %r (%s)" % (case, who))
+                if form(col, 1) != (c3 if col < 3 else c5):
+                    u.fail("NFD differs from the file on %r (%s)" % (case, who))
+                if form(col, 2) != c4 or form(col, 3) != c5:
+                    u.fail("a compatibility form differs from the file on %r (%s)" % (case, who))
+
+    check("ICU", u.oracle_go("icent", stdin=text), cases)
+    node = u.oracle_node("normalize.mjs", stdin=old_text)
+    go = u.oracle_go("nt", stdin=old_text)
+    for case, nl, gl in zip(old_cases, node, go):
         if nl != gl:
             u.fail("Node and Go differ on %r" % case)
-        outs = [o.split() for o in nl.split("|")]
-        # outs[col*4 + form] with forms NFC, NFD, NFKC, NFKD
-        def form(col, k):
-            return [int(x, 16) for x in outs[col * 4 + k]]
-        c1, c2, c3, c4, c5 = case
-        for col in range(5):
-            if form(col, 0) != (c2 if col < 3 else c4):
-                u.fail("NFC differs from the file on %r" % case)
-            if form(col, 1) != (c3 if col < 3 else c5):
-                u.fail("NFD differs from the file on %r" % case)
-            if form(col, 2) != c4 or form(col, 3) != c5:
-                u.fail("a compatibility form differs from the file on %r" % case)
+    check("Node", node, old_cases)
+    check("Go", go, old_cases)
     off, pool = [], []
     for case in cases:
         for col in case:
@@ -67,11 +80,11 @@ def normalization():
             pool.extend(col)
     off.append(len(pool))
     write("norm_cases.goose", "normalization conformance", [
-        "// Five columns for each case, as in the file NormalizationTest.txt of Unicode 17.0.0.\n"
+        "// Five columns for each case, as in the file NormalizationTest.txt of Unicode 18.0.0.\n"
         + u.array("NT_OFF", off, "Start of each column in NT_POOL. Five columns for each case. One more entry ends the last."),
         u.array("NT_POOL", pool, "The code points of all columns."),
     ])
-    print("normalization cases %d, pool %d, checked against Node and Go" % (len(cases), len(pool)))
+    print("normalization cases %d, pool %d, checked against ICU; %d against Node and Go" % (len(cases), len(pool), len(old_cases)))
 
 
 def grapheme():
@@ -166,18 +179,19 @@ def exclusions():
 
 def properties():
     cat = []
-    for line in u.oracle_go("cat"):
+    for line in u.oracle_go("icucat"):
         a, b, name = line.split()
         cat.extend([int(a, 16), int(b, 16), u.CATS.index(name)])
     ccc = []
-    for line in u.oracle_go("ccc"):
+    for line in u.oracle_go("icunum", "4098"):
         a, b, v = line.split()
-        ccc.extend([int(a, 16), int(b, 16), int(v)])
+        if int(v) > 0:
+            ccc.extend([int(a, 16), int(b, 16), int(v)])
     up, lo = [], []
-    for line in u.oracle_go("upper"):
+    for line in u.oracle_go("icucase", "upper"):
         a, b = line.split()
         up.extend([int(a, 16), int(b, 16)])
-    for line in u.oracle_go("lower"):
+    for line in u.oracle_go("icucase", "lower"):
         a, b = line.split()
         lo.extend([int(a, 16), int(b, 16)])
     fold = []
@@ -187,10 +201,10 @@ def properties():
             seq = [int(x, 16) for x in p[2].split()]
             fold.extend([int(p[0], 16), len(seq)] + seq)
     write("property_cases.goose", "categories, classes and case", [
-        u.array("PC_CAT", cat, "Runs of equal category from the Go standard library: first, last, category."),
-        u.array("PC_CCC", ccc, "Runs of a combining class above zero from x/text: first, last, class."),
-        u.array("PC_UP", up, "Simple upper case from the Go standard library: code point, result."),
-        u.array("PC_LO", lo, "Simple lower case from the Go standard library: code point, result."),
+        u.array("PC_CAT", cat, "Runs of equal category from the ICU library: first, last, category."),
+        u.array("PC_CCC", ccc, "Runs of a combining class above zero from the ICU library: first, last, class."),
+        u.array("PC_UP", up, "Simple upper case from the ICU library: code point, result."),
+        u.array("PC_LO", lo, "Simple lower case from the ICU library: code point, result."),
         u.array("PC_FOLD", fold, "Full case folding from the Unicode data: code point, length, result."),
     ])
     print("property cases: categories %d runs, classes %d runs, upper %d, lower %d" % (len(cat) // 3, len(ccc) // 3, len(up) // 2, len(lo) // 2))

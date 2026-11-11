@@ -1,4 +1,4 @@
-// Unicode 17.0.0 data for the unicode package.
+// Unicode 18.0.0 data for the unicode package.
 // Made by test/make_bidi_cases.py. Do not edit by hand. Make the file again with
 // the script. The numbers come from the Unicode Character Database, which
 // the Unicode License covers. See test/NOTICE.

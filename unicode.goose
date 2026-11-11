@@ -4,7 +4,7 @@
 // byte. It converts text to the four normalization forms. It converts
 // case and folds case for caseless compare. It gives the general category
 // and the combining class of a code point. It splits text into grapheme
-// clusters. The tables hold Unicode 17.0.0.
+// clusters. The tables hold Unicode 18.0.0.
 //
 // Every call checks the length of its input before any other work. Every
 // call that writes text checks the length of its result. A fault holds a
@@ -52,7 +52,7 @@ import confusable_data;
 import confusable;
 
 // The Unicode version of the tables.
-const UNICODE_VERSION: u8[] = "17.0.0";
+const UNICODE_VERSION: u8[] = "18.0.0";
 
 // ---- fault codes ----------------------------------------------------
 const OK: i64 = 0;

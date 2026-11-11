@@ -6,7 +6,7 @@ decomposition type with the one level mappings, the joining type, the
 joining group and the paired brackets. The sources are UnicodeData.txt,
 DerivedNumericType.txt, DerivedDecompositionType.txt,
 DerivedJoiningType.txt, DerivedJoiningGroup.txt and BidiBrackets.txt of
-the Unicode Character Database 17.0.0.
+the Unicode Character Database 18.0.0.
 Second sources: the ICU library gives every property over the whole range,
 and Python unicodedata gives the decimal value, the digit value and the
 mapping for the code points of its own release. The script fails on the

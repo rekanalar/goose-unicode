@@ -178,7 +178,7 @@ fn lb_decide(u: const i64[:], k: i64, st: LineState&) -> i64 {
     // LB11, LB12, LB12a
     if b == LB_WJ || a == LB_WJ { return 0; }
     if a == LB_GL { return 0; }
-    if b == LB_GL && a != LB_SP && a != LB_BA && a != LB_HY && a != LB_HH { return 0; }
+    if b == LB_GL && a != LB_SP && a != LB_HY && a != LB_HH { return 0; }
     // LB13, LB14
     if b == LB_CL || b == LB_CP || b == LB_EX || b == LB_SY { return 0; }
     if st.bc == LB_OP { return 0; }

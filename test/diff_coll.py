@@ -3,7 +3,7 @@
 
 The script builds random pairs of code points from the whole range and
 asks each reference for the sign of its root collator. The references
-are the ICU 78 library, the collate package of Go x/text, the Intl
+are the ICU 79 library, the collate package of Go x/text, the Intl
 object of Node, and the icu_collator crate of Rust. The script prints
 how often the references disagree and gives examples. A disagreement
 of two references is a fact of the references. The package follows the

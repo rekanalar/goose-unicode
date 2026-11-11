@@ -1,6 +1,8 @@
 // Grapheme clusters, by the rules of the Unicode text segmentation
 // standard. The state of one cluster has four numbers, so the split
-// needs no stack and no recursion.
+// needs no stack and no recursion. Rule GB9c holds a conjunct together:
+// a linker, then any marks of the Extend class, then a consonant. A
+// consonant before the linker is not required.
 namespace unicode;
 
 import std;
@@ -10,7 +12,7 @@ struct Cluster {
     prev: i64,   // the break class of the last code point
     ri: i64,     // regional indicators in a row
     ep: i64,     // 1 after a pictographic and marks, 2 after the joiner that follows
-    incb: i64,   // 1 after a consonant, 2 after a linker that follows it
+    incb: i64,   // 2 after a linker and the marks of the Extend class that follow it
 }
 
 // The packed property of a code point. A bad byte counts as a control,
@@ -53,11 +55,9 @@ fn cluster_take(st: Cluster&, p: i64) {
         st.ep = 0;
     }
     if cur == GB_REGIONAL_INDICATOR { st.ri += 1; } else { st.ri = 0; }
-    if incb == 1 {
-        st.incb = 1;
-    } else if st.incb >= 1 && incb == 2 {
+    if incb == 2 {
         st.incb = 2;
-    } else if st.incb == 0 || incb != 3 {
+    } else if st.incb != 2 || incb != 3 {
         st.incb = 0;
     }
     st.prev = cur;

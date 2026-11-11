@@ -6,8 +6,8 @@ class, the Extended_Pictographic flag and the Indic_Conjunct_Break class,
 packed in one number: the class in the low four bits, the flag in bit 4
 and the conjunct class in bits 5 and 6 (1 consonant, 2 linker, 3 extend).
 The sources are GraphemeBreakProperty.txt, emoji-data.txt and
-DerivedCoreProperties.txt of the Unicode Character Database 17.0.0.
-Second sources: Node (ICU 78) gives Extended_Pictographic and
+DerivedCoreProperties.txt of the Unicode Character Database 18.0.0.
+Second sources: Node (ICU 78, which holds 17.0) gives Extended_Pictographic and
 Regional_Indicator by regular expression. Intl.Segmenter of Node and an
 independent Python version of the rules both split every case of
 GraphemeBreakTest.txt, and the script fails if either disagrees with the
@@ -26,8 +26,10 @@ GB = {"Other": 0, "CR": 1, "LF": 2, "Control": 3, "Extend": 4, "ZWJ": 5,
 INCB = {"Consonant": 1, "Linker": 2, "Extend": 3}
 
 
-def reference_split(cps, val):
-    """An independent version of the rules of UAX 29, for the check only."""
+def reference_split(cps, val, legacy=False):
+    """An independent version of the rules of UAX 29, for the check only.
+    The legacy form holds the rule GB9c of 17.0.0, which needs a consonant
+    before the linker. Node still follows that form."""
     def gb(c): return val[c] & 15
     def ep(c): return (val[c] >> 4) & 1
     def incb(c): return (val[c] >> 5) & 3
@@ -52,15 +54,20 @@ def reference_split(cps, val):
         elif b in (4, 5, 8) or a == 7:
             brk = False
         else:
-            # GB9c: consonant, extends and linkers with one linker, then consonant
+            # GB9c: a linker, marks of the Extend class, then a consonant.
+            # The legacy form wants a consonant, then linkers and marks
+            # with at least one linker, then the consonant.
             if incb(cps[i]) == 1:
                 j = i - 1
                 seen_linker = False
-                while j >= start and incb(cps[j]) in (2, 3):
+                while j >= start and incb(cps[j]) in ((2, 3) if legacy else (3,)):
                     if incb(cps[j]) == 2:
                         seen_linker = True
                     j -= 1
-                if seen_linker and j >= start and incb(cps[j]) == 1:
+                if legacy:
+                    if seen_linker and j >= start and incb(cps[j]) == 1:
+                        brk = False
+                elif j >= start and incb(cps[j]) == 2:
                     brk = False
             # GB11: pictographic, extends, joiner, pictographic
             if brk and a == 5 and ep(cps[i]):
@@ -119,11 +126,22 @@ def main():
                 a, b = line.split()
                 s.update(range(int(a, 16), int(b, 16) + 1))
         return s
-    if node_set("Extended_Pictographic") != ep:
-        u.fail("Extended_Pictographic differs from Node")
-    if node_set("Regional_Indicator") != ri:
-        u.fail("Regional_Indicator differs from Node")
+    def icu_set(name):
+        s = set()
+        for line in u.oracle_go("icebin", name):
+            a, b, _ = line.split()
+            s.update(range(int(a, 16), int(b, 16) + 1))
+        return s
+    # ICU holds the release of the tables and judges every code point.
+    # Node holds 17.0, so it judges the code points that 18.0 did not add.
+    held = u.held()
+    for name, mine in (("Extended_Pictographic", ep), ("Regional_Indicator", ri)):
+        if icu_set(name) != mine:
+            u.fail("%s differs from ICU" % name)
+        if {c for c in node_set(name) if held[c]} != {c for c in mine if held[c]}:
+            u.fail("%s differs from Node" % name)
 
+    moved = 0
     cases = []
     for line in open(u.ucd_path("GraphemeBreakTest.txt"), encoding="utf-8"):
         line = line.split("#")[0].strip()
@@ -147,10 +165,18 @@ def main():
     for cps, sizes in cases:
         if reference_split(cps, val) != sizes:
             u.fail("the reference rules fail on %r: %r against %r" % (cps, reference_split(cps, val), sizes))
-    node = u.oracle_node("segment.mjs", stdin="\n".join(json.dumps(c[0]) for c in cases) + "\n")
-    for (cps, sizes), line in zip(cases, node):
-        if [int(x) for x in line.split()] != sizes:
-            u.fail("Intl.Segmenter disagrees with the test file on %r" % cps)
+    # Node follows the legacy GB9c, so it must equal the legacy form of
+    # the rules on every case that holds no code point of the new release.
+    old_cases = [c for c in cases if all(held[x] for x in c[0])]
+    node = u.oracle_node("segment.mjs", stdin="\n".join(json.dumps(c[0]) for c in old_cases) + "\n")
+    for (cps, sizes), line in zip(old_cases, node):
+        want = reference_split(cps, val, legacy=True)
+        if [int(x) for x in line.split()] != want:
+            u.fail("Intl.Segmenter disagrees with the legacy rules on %r" % cps)
+        if want != sizes:
+            moved += 1
+    if moved == 0:
+        u.fail("no case of the test file depends on the changed rule GB9c")
 
     # ---- the output ----------------------------------------------
     runs = u.runs_of(val)
@@ -159,7 +185,7 @@ def main():
         u.array("GP_VAL", [r[2] for r in runs], "Break class in bits 0 to 3, pictographic flag in bit 4, conjunct class in bits 5 and 6."),
     ]
     u.write_goose(os.path.join(u.ROOT, "grapheme_data.goose"), "make_grapheme_data.py", parts)
-    print("grapheme runs %d; %d cases of the break test file agree with the reference rules and with Node" % (len(runs), len(cases)))
+    print("grapheme runs %d; %d cases of the break test file agree with the reference rules; Node agrees with the legacy rules on %d cases, %d of them split differently now" % (len(runs), len(cases), len(old_cases), moved))
 
 
 main()

@@ -92,7 +92,7 @@ def main():
 
     # ---- the second sources ---------------------------------------------
     # Python, over every code point. Python holds Unicode 16.0.0, so it
-    # misses the letters that 17.0.0 added. A difference warns.
+    # misses the letters that 17.0.0 and 18.0.0 added. A difference warns.
     py_warn = 0
     for cp in range(0x110000):
         if 0xD800 <= cp <= 0xDFFF or cp == 0x3A3:
@@ -114,40 +114,39 @@ def main():
         elif text != "".join(chr(c) for c in want):
             py_warn += 1
 
-    # Node, over every code point in one batch.
     cps = [cp for cp in range(0x110000) if not 0xD800 <= cp <= 0xDFFF]
-    node = u.oracle_node("casefull.mjs", stdin="\n".join(hexes([cp]) for cp in cps) + "\n")
-    if len(node) != len(cps):
-        u.fail("the Node oracle returned %d lines for %d code points" % (len(node), len(cps)))
-    for cp, line in zip(cps, node):
-        out_up, out_lo = line.split("\t")
-        want_up = full_upper.get(cp)
-        if want_up is None:
-            want_up = [simple_upper.get(cp, cp)]
-        if out_up != hexes(want_up):
-            u.fail("upper of %04X differs from Node: %s, %s" % (cp, out_up, hexes(want_up)))
-        want_lo = full_lower.get(cp)
-        if want_lo is None:
-            want_lo = [simple_lower.get(cp, cp)]
-        if out_lo != hexes(want_lo):
-            u.fail("lower of %04X differs from Node: %s, %s" % (cp, out_lo, hexes(want_lo)))
+    held = u.held()
+    # Four old letters gained an upper case mapping to a new letter in
+    # 18.0.0, so the older libraries disagree on exactly these.
+    changed = {0x277, 0x27C, 0xAB4B, 0xAB4C}
 
-    # Go, over every code point in one batch.
-    go = u.oracle_go("fullcase", stdin="\n".join("%X" % cp for cp in cps) + "\n")
-    if len(go) != len(cps):
-        u.fail("the Go oracle returned %d lines for %d code points" % (len(go), len(cps)))
-    for cp, line in zip(cps, go):
-        out_up, out_lo = line.split("\t")
-        want_up = full_upper.get(cp)
-        if want_up is None:
-            want_up = [simple_upper.get(cp, cp)]
-        if out_up != hexes(want_up):
-            u.fail("upper of %04X differs from Go: %s, %s" % (cp, out_up, hexes(want_up)))
-        want_lo = full_lower.get(cp)
-        if want_lo is None:
-            want_lo = [simple_lower.get(cp, cp)]
-        if out_lo != hexes(want_lo):
-            u.fail("lower of %04X differs from Go: %s, %s" % (cp, out_lo, hexes(want_lo)))
+    def check(who, lines, judge):
+        if len(lines) != len(cps):
+            u.fail("the %s oracle returned %d lines for %d code points" % (who, len(lines), len(cps)))
+        for cp, line in zip(cps, lines):
+            if not judge(cp):
+                continue
+            out_up, out_lo = line.split("\t")
+            want_up = full_upper.get(cp)
+            if want_up is None:
+                want_up = [simple_upper.get(cp, cp)]
+            if out_up != hexes(want_up):
+                u.fail("upper of %04X differs from %s: %s, %s" % (cp, who, out_up, hexes(want_up)))
+            want_lo = full_lower.get(cp)
+            if want_lo is None:
+                want_lo = [simple_lower.get(cp, cp)]
+            if out_lo != hexes(want_lo):
+                u.fail("lower of %04X differs from %s: %s, %s" % (cp, who, out_lo, hexes(want_lo)))
+
+    stdin = "\n".join("%X" % cp for cp in cps) + "\n"
+    # ICU holds the release of the tables, so it judges every code point.
+    check("ICU", u.oracle_go("icefullcase", stdin=stdin), lambda cp: True)
+    # Node and Go hold 17.0, so they judge the code points that 18.0 did
+    # not add and did not change.
+    old = lambda cp: held[cp] and cp not in changed
+    node = u.oracle_node("casefull.mjs", stdin="\n".join(hexes([cp]) for cp in cps) + "\n")
+    check("Node", node, old)
+    check("Go", u.oracle_go("fullcase", stdin=stdin), old)
 
     # ---- the tables -------------------------------------------------------
     cased = prop_ranges("DerivedCoreProperties.txt", "Cased")
@@ -174,15 +173,22 @@ def main():
               "\u03A3\u03A3", "\u039F\u03A3.\u03A3", "\u039F\u03A3\u0307\u03A3",
               "\u03A3\u03A3\u03A3", "\u039F\u03A3'\u03A3", "\u039F\u039F\u03A3",
               "\u03A3 \u03A3"]
+    def expect(t, full, simple, py):
+        # Python holds an older release: it answers for a text of held
+        # code points, and the table answers for a code point it lacks.
+        if all(held[ord(c)] for c in t):
+            return py(t)
+        return "".join("".join(map(chr, full.get(ord(c), [simple.get(ord(c), ord(c))]))) for c in t)
+
     in_pool, up_pool, lo_pool = [], [], []
     in_off, up_off, lo_off = [0], [0], [0]
     for t in texts:
         in_pool += [ord(c) for c in t]
         in_off.append(len(in_pool))
-        u_out = t.upper()
+        u_out = expect(t, full_upper, simple_upper, str.upper)
         up_pool += [ord(c) for c in u_out]
         up_off.append(len(up_pool))
-        l_out = t.lower()
+        l_out = expect(t, full_lower, simple_lower, str.lower)
         lo_pool += [ord(c) for c in l_out]
         lo_off.append(len(lo_pool))
     suite_parts = [

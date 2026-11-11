@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Make coll_data.goose: the collation elements of every code point.
 
-The table comes from allkeys17.txt, the allkeys_CLDR.txt of the Unicode
-17.0.0 commit of the CLDR repository. The root tailoring is empty, so
+The table comes from allkeys_CLDR.txt of CLDR release 49, the root
+collation for Unicode 18.0.0. The root tailoring is empty, so
 the file holds no contractions: every row maps one code point to a
 sequence of collation elements. A code point with no row takes the
 implicit weights of UTS #10, which collate.goose computes.
 
 The script also writes test/suite/coll_cases.goose. It holds the texts
-of CollationTest_CLDR_NON_IGNORABLE.txt of the same commit: each line
+of CollationTest_CLDR_NON_IGNORABLE.txt of the same release: each line
 of that file orders strictly above the line before it. It holds
 random pairs from the whole range with the sign of the ICU collator
 on the und locale as well. Usage: make_coll_data.py [ucd directory]
@@ -23,7 +23,7 @@ import ucdlib as u
 
 
 def parse_elements():
-    """The rows of allkeys17.txt.
+    """The rows of allkeys_CLDR.txt.
 
     Returns (singles, contracts): singles maps one code point to its
     element list. contracts maps a tuple of code points to its element
@@ -31,7 +31,7 @@ def parse_elements():
     """
     singles = {}
     contracts = {}
-    for line in u.lines_of("allkeys17.txt"):
+    for line in u.lines_of("allkeys_CLDR.txt"):
         if line.startswith("@"):
             continue
         lhs, rhs = line.split(";", 1)
@@ -98,6 +98,8 @@ def implicit_tables():
         (((0x18800, 0x18AFF), (0x18D80, 0x18DFF)), 0xFB01, 0x18800),  # Tangut Components
         (((0x1B170, 0x1B2FF),), 0xFB02, 0x1B170),                     # Nushu
         (((0x18B00, 0x18CFF),), 0xFB03, 0x18B00),                     # Khitan Small Script
+        (((0x18E00, 0x1919F), (0x191A0, 0x191DF)), 0xFB04, 0x18E00),  # Jurchen
+        (((0x3D000, 0x3FC3F),), 0xFB05, 0x3D000),                     # Seal
     ]
     sini_s, sini_e, sini_a, sini_b = [], [], [], []
     sini_runs = []
@@ -149,7 +151,7 @@ def parse_conformance():
     """
     texts = []
     keys = []
-    with open(u.ucd_path("CollTest17.txt"), encoding="utf-8") as f:
+    with open(u.ucd_path("CollationTest_CLDR_NON_IGNORABLE.txt"), encoding="utf-8") as f:
         for line in f:
             if line.startswith("#") or ";" not in line:
                 continue
@@ -269,7 +271,7 @@ def main():
 
     # The random pairs come from the ICU oracle on the und locale. The
     # pairs cover the whole range, the unassigned code points and the
-    # expansions. A pair of two Han code points stays out: the ICU 78
+    # expansions. A pair of two Han code points stays out: the ICU 79
     # collator orders the Han by the Unihan radical stroke, while the
     # conformance file and the Go and Rust references order it by the
     # implicit weights of UTS #10. The README names the difference.

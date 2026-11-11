@@ -6,9 +6,10 @@ The properties come from emoji-data.txt, DerivedCoreProperties.txt,
 PropList.txt and DerivedNormalizationProps.txt. Each property is checked
 against the ICU library over every code point, and against the regular
 expression engine of Node, which holds Unicode 17.0, where Node has a
-class for it. The script exits with an error on the first difference. It also writes the suite file: sample code
-points with their masks from Node, and the runs of the group of the
-general category from the Go library.
+class for it. Node judges only the code points that 18.0 did not add.
+The script exits with an error on the first difference. It also writes
+the suite file: sample code points with their masks, and the runs of
+the group of the general category from the ICU library.
 Usage: make_flags_data.py [ucd directory]
 """
 import os
@@ -56,6 +57,18 @@ BITS = [(f, p, 1 << i) for i, (f, p) in enumerate(PROPS)]
 GROUPS = {"L": 0, "M": 1, "N": 2, "P": 3, "S": 4, "Z": 5, "C": 6}
 
 
+# The code points that 18.0.0 changed although they are old. Node holds
+# 17.0 and disagrees on exactly these. Four letters gained an upper case
+# mapping to a new letter, and three marks became Diacritic. The check
+# against Node requires this set exactly, so any other difference fails.
+CHANGED_IN_18 = {
+    "Changes_When_Casemapped": {0x277, 0x27C, 0xAB4B, 0xAB4C},
+    "Changes_When_Titlecased": {0x277, 0x27C, 0xAB4B, 0xAB4C},
+    "Changes_When_Uppercased": {0x277, 0x27C, 0xAB4B, 0xAB4C},
+    "Diacritic": {0x656, 0x6E2, 0x8D3},
+}
+
+
 def load():
     mask = [0] * (u.MAX_CP + 1)
     for name, prop, bit in BITS:
@@ -93,21 +106,18 @@ def ice_ranges(prop):
 def main():
     u.check_version()
     mask = load()
-    node_mask = [0] * (u.MAX_CP + 1)
+    held = u.held()
     for name, prop, bit in BITS:
         got = {cp for cp in range(u.MAX_CP + 1) if mask[cp] & bit}
         if got != ice_ranges(prop):
             cp = sorted(got ^ ice_ranges(prop))[0]
             u.fail("%s differs from ICU at %04X" % (prop, cp))
-        if prop in NO_NODE:
-            want = got
-        else:
+        if prop not in NO_NODE:
             want = node_ranges(prop)
-            if got != want:
-                cp = sorted(got ^ want)[0]
-                u.fail("%s differs from Node at %04X" % (prop, cp))
-        for cp in want:
-            node_mask[cp] |= bit
+            diff = {cp for cp in got ^ want if held[cp]}
+            if diff != CHANGED_IN_18.get(prop, set()):
+                u.fail("%s differs from Node at %s" % (
+                    prop, " ".join("%04X" % c for c in sorted(diff ^ CHANGED_IN_18.get(prop, set()))[:5])))
 
     runs = u.runs_of(mask, skip=0)
     offs = [0]
@@ -131,19 +141,24 @@ def main():
                 if 0 <= cp <= u.MAX_CP:
                     sample.add(cp)
     sample = sorted(sample)
-    groups = u.oracle_go("catgroup")
+    # The group is the first letter of the ICU category. Cs, Co and Cn
+    # fall in the group C, as they do in the table of the package.
     g_start, g_end, g_val = [], [], []
-    for line in groups:
+    for line in u.oracle_go("icucat"):
         a, b, v = line.split()
+        g = GROUPS[v[0]]
+        if g_val and g_val[-1] == g:
+            g_end[-1] = int(b, 16)
+            continue
         g_start.append(int(a, 16))
         g_end.append(int(b, 16))
-        g_val.append(GROUPS[v])
+        g_val.append(g)
     suite = [
         u.array("FL_CP", sample, "The code points of the sample."),
-        u.array("FL_MASK", [node_mask[cp] for cp in sample], "The mask of each sample code point, from Node."),
+        u.array("FL_MASK", [mask[cp] for cp in sample], "The mask of each sample code point, checked against ICU."),
         u.array("GP_START", g_start, "The first code point of each run of one group."),
         u.array("GP_END", g_end, "The last code point of each run."),
-        u.array("GP_VAL", g_val, "The group of each run, from Go."),
+        u.array("GP_VAL", g_val, "The group of each run, from ICU."),
     ]
     u.write_goose(os.path.join(u.ROOT, "test", "suite", "flags_cases.goose"),
                   "make_flags_data.py", suite, "suite")

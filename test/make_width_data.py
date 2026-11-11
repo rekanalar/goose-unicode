@@ -120,6 +120,10 @@ def main():
     zero = di | extend | hangul_vt | (prepend - pcm) | {0x0605, 0x070F, 0x0890, 0x0891, 0x08E2, 0xA8FA}
     zero.discard(0x115F)
     zero.discard(0x2D7F)
+    # The two halfwidth sound marks are Grapheme_Extend, yet the crate
+    # 0.2.3 gives them width 1. The package follows the crate.
+    zero.discard(0xFF9E)
+    zero.discard(0xFF9F)
     # The text presentation sequences of the ideographic supplement keep
     # the width of their base.
     text_pres = (text_style & emoji_pres) - set(range(0x1F200, 0x1F300))
@@ -360,7 +364,7 @@ def main():
         f.write("];\n\n")
 
     with open(os.path.join(ROOT, "width_data.goose"), "w", encoding="utf-8") as f:
-        f.write("// Unicode 17.0.0 width data for the unicode package.\n")
+        f.write("// Unicode 18.0.0 width data for the unicode package.\n")
         f.write("// Made by test/make_width_data.py. Do not edit by hand.\n")
         f.write("//\n")
         f.write("// CW_START and CW_VAL hold the width of every code point\n")

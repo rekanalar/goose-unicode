@@ -10,7 +10,7 @@ The script also writes the suite tables. The skeleton of a text is
 the text in the canonical form, then the default ignorables dropped,
 then every code point mapped through the table, then the canonical
 form again. The script computes that result for every source and for
-a set of texts. It asks the ICU 78 library for the same skeletons.
+a set of texts. It asks the ICU 79 library for the same skeletons.
 The ICU library ships an older revision of the table, so the two
 differ on the sources whose rows changed. The script counts them.
 

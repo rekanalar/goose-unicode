@@ -4,7 +4,7 @@
 The per code point rows come from the NFKC_CF property of
 DerivedNormalizationProps.txt. A code point with no row maps to
 itself, so the suite replays the listed rows only. The script also
-writes strings of several code points with their fold from the ICU 78
+writes strings of several code points with their fold from the ICU 79
 library, because mapped characters interact and the composition runs
 over the whole text. Each string folds to the same bytes as its NFKC
 case fold, so the suite compares them directly.

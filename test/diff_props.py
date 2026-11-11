@@ -4,7 +4,7 @@
 The table of flags_data.goose is the table of the package. The Go
 standard library holds some of the properties in unicode.Properties. The
 script compares each of them over every code point and prints the
-differences. Go holds Unicode 17.0.0 as the package does.
+differences. Go holds Unicode 17.0.0, so it judges the code points that 18.0.0 did not add.
 
 Usage: diff_props.py
 """

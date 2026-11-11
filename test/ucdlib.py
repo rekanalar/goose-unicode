@@ -1,6 +1,6 @@
 """Shared helpers of the table generators.
 
-The generators read the Unicode Character Database 17.0.0 text files from
+The generators read the Unicode Character Database 18.0.0 text files from
 a directory. The first argument of a generator names that directory. The
 default is ../../../tmp/ucd relative to this file. Each generator writes
 numbers only into a Goose source file in the package root.
@@ -12,7 +12,7 @@ import sys
 HERE = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(HERE)
 MAX_CP = 0x10FFFF
-VERSION = "17.0.0"
+VERSION = "18.0.0"
 
 CATS = ["Cn", "Lu", "Ll", "Lt", "Lm", "Lo", "Mn", "Mc", "Me", "Nd", "Nl", "No",
         "Pc", "Pd", "Ps", "Pe", "Pi", "Pf", "Po", "Sm", "Sc", "Sk", "So", "Zs",
@@ -145,6 +145,41 @@ def runs_of(values, skip=None):
 
 
 def check_version():
-    v = oracle_go("version")[0].split()
-    if v != [VERSION, VERSION]:
-        fail("the Go oracle holds Unicode %s, not %s" % (v, VERSION))
+    """The ICU library is the oracle that holds the release of the
+    tables. The Go library, Node and Python hold older releases, so the
+    generators compare with them only where the older release holds the
+    code point."""
+    v = oracle_go("icuver")[0].strip()
+    if v != VERSION:
+        fail("the ICU oracle holds Unicode %s, not %s" % (v, VERSION))
+
+
+_HELD = None
+
+
+def held():
+    """A bytearray over all code points: 1 where the older oracles can
+    judge the code point, 0 where the release of the tables assigned it.
+    The Go library, Node and Python hold an older release, so they know
+    nothing of the new code points. The ICU library holds the release
+    of the tables and judges every code point."""
+    global _HELD
+    if _HELD is None:
+        h = bytearray([1]) * (MAX_CP + 1)
+        major = int(VERSION.split(".")[0])
+        for line in oracle_go("iceage"):
+            a, b, age = line.split()
+            if int(age.split(".")[0]) >= major:
+                for c in range(int(a, 16), int(b, 16) + 1):
+                    h[c] = 0
+        _HELD = h
+    return _HELD
+
+
+def expand(runs, default=0):
+    """The list over all code points from (first, last, value) runs."""
+    out = [default] * (MAX_CP + 1)
+    for a, b, v in runs:
+        for c in range(a, b + 1):
+            out[c] = v
+    return out

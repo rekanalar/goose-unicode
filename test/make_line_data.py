@@ -5,8 +5,9 @@ The table holds, for every run of code points, the Line_Break class of
 LineBreak.txt in the low six bits and the East Asian flag of rule LB30 in
 bit 6. The flag is set when the East_Asian_Width of EastAsianWidth.txt is
 F, W or H. Code points that the file does not list hold XX.
-The script checks the classes against the Rust unicode-linebreak crate.
-The crate holds an older release of the standard, so the code points that
+The script checks the classes against the ICU library over every code
+point. ICU holds the release of the tables. The Rust unicode-linebreak
+crate holds an older release of the standard, so the code points that
 the newest release changed may differ; the script counts them.
 The suite file holds every case of LineBreakTest.txt: the code points of
 the text and the boundaries that break.
@@ -62,6 +63,22 @@ CRATE = {"Mandatory": "BK", "CarriageReturn": "CR", "LineFeed": "LF", "Combining
 NEWER = {"AK", "AP", "AS", "VF", "VI", "HH"}
 
 
+def check_icu(val):
+    """The class of every code point must equal the ICU class. ICU
+    names the class of each code point, so no code point stays out."""
+    icu = {}
+    for line in u.oracle_go("icushort", "4104"):
+        a, b, name = line.split()
+        for cp in range(int(a, 16), int(b, 16) + 1):
+            icu[cp] = name
+    if len(icu) != u.MAX_CP + 1:
+        u.fail("ICU gave classes for %d code points" % len(icu))
+    for cp in range(u.MAX_CP + 1):
+        mine = CLASSES[val[cp] & 63]
+        if mine != icu[cp]:
+            u.fail("the class of %04X is %s here and %s in ICU" % (cp, mine, icu[cp]))
+
+
 def check_crate(val):
     """Compare with the crate, which holds an older release. Code points
     that the newest release added or changed may differ; the script counts
@@ -100,6 +117,7 @@ def main():
         u.array("LB_VAL", [r[2] for r in runs], "The class of each run, with the East Asian flag in bit 6."),
     ]
     u.write_goose(os.path.join(u.ROOT, "linebreak_data.goose"), "make_line_data.py", parts)
+    check_icu(val)
     check_crate(val)
 
     cps, in_off, brk, brk_off = [], [0], [], [0]

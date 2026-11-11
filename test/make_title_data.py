@@ -66,17 +66,35 @@ def main():
     full = parse_special_casing()
     table = derive(rows, full)
 
-    # The first source: the Go library, over every code point.
-    go = u.oracle_go("titlecp")
-    if len(go) != len(table):
-        u.fail("the Go oracle holds %d mappings, the tables hold %d"
-               % (len(go), len(table)))
-    for line in go:
+    # The first source: the ICU library, over every code point. ICU holds
+    # the release of the tables.
+    icu = {}
+    for line in u.oracle_go("icetitlecp"):
         f = line.split()
-        cp = int(f[0], 16)
-        if hexes(table[cp]) != " ".join(f[1:]):
-            u.fail("title of %04X differs from Go: %s, %s"
-                   % (cp, hexes(table[cp]), " ".join(f[1:])))
+        icu[int(f[0], 16)] = " ".join(f[1:])
+    # ICU gives no title mapping to the lone code point U+0345. The
+    # Character Database and Go give it U+0399, and the table follows
+    # them. The cause in ICU is not investigated. Every other code point
+    # must equal ICU.
+    for cp in sorted(set(icu) | set(table)):
+        have = hexes(table[cp]) if cp in table else None
+        if cp == 0x345 and have == "0399" and cp not in icu:
+            continue
+        if have != icu.get(cp):
+            u.fail("title of %04X differs from ICU: %s, %s" % (cp, have, icu.get(cp)))
+
+    # The second source: the Go library. It holds an older release, so it
+    # judges the code points that the release did not add.
+    held = u.held()
+    go = u.oracle_go("titlecp")
+    go_map = {int(l.split()[0], 16): " ".join(l.split()[1:]) for l in go}
+    mine_old = {cp: hexes(t) for cp, t in table.items() if held[cp]}
+    # Four old letters gained a mapping to a new letter in 18.0.0.
+    for cp in (0x277, 0x27C, 0xAB4B, 0xAB4C):
+        mine_old.pop(cp, None)
+    if go_map != mine_old:
+        diff = sorted(set(go_map.items()) ^ set(mine_old.items()))[:3]
+        u.fail("title differs from Go: %r" % (diff,))
 
     # The second source: the Rust crate. The crate holds an older
     # release of the standard, so the newest code points may differ.

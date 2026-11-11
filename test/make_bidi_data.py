@@ -2,7 +2,7 @@
 """Make bidi_data.goose: the paired brackets of the bidirectional algorithm.
 
 The table comes from BidiBrackets.txt of the Unicode Character Database
-17.0.0. Each bracket gets one number: twice the code point of the opening
+18.0.0. Each bracket gets one number: twice the code point of the opening
 bracket of its pair, plus 1 for an opening bracket. The angle brackets
 U+2329 and U+232A count as U+3008 and U+3009, as UAX #9 asks. The script
 exits with an error when the opening and closing brackets do not pair.

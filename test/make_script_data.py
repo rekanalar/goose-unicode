@@ -4,7 +4,7 @@
 The tables hold the script extensions, the blocks and the age of every
 code point. The sources are ScriptExtensions.txt, Blocks.txt,
 DerivedAge.txt and PropertyValueAliases.txt of the Unicode Character
-Database 17.0.0. The script numbers are those of props_data.goose, so the
+Database 18.0.0. The script numbers are those of props_data.goose, so the
 script of a code point without an extension list comes from the table of
 `script`.
 The ICU library gives the three properties over the whole range. The

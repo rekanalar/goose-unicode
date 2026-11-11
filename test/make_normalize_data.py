@@ -2,10 +2,11 @@
 """Make normalize_data.goose: decompositions, compositions, quick checks.
 
 The tables come from UnicodeData.txt and DerivedNormalizationProps.txt of
-the Unicode Character Database 17.0.0. The decompositions are complete:
+the Unicode Character Database 18.0.0. The decompositions are complete:
 one lookup gives the final sequence, so the package needs no recursion.
 Each table is checked against golang.org/x/text/unicode/norm, which holds
-Unicode 17.0.0. The script exits with an error on the first difference.
+Unicode 17.0.0, for the code points that 18.0.0 did not add. The script
+exits with an error on the first difference.
 Usage: make_normalize_data.py [ucd directory]
 """
 import os
@@ -100,6 +101,10 @@ def main():
     comp_keys = sorted(comp)
 
     # ---- the second source ---------------------------------------
+    # Go holds an older release, so it judges the code points that the
+    # release of the tables did not add. The conformance file of the
+    # release covers the new ones.
+    held = u.held()
     for mode, table in (("nfd", dec), ("nfkd", None)):
         go = {}
         for line in u.oracle_go(mode):
@@ -112,7 +117,7 @@ def main():
             seq = reorder(kdec.get(cp, dec.get(cp, [cp])) if mode == "nfkd" else dec.get(cp, [cp]))
             if S_BASE <= cp < S_BASE + S_COUNT:
                 seq = hangul_decompose(cp)
-            if seq != [cp]:
+            if seq != [cp] and held[cp]:
                 want[cp] = seq
         if go != want:
             diff = sorted(set((k, tuple(v)) for k, v in go.items()) ^ set((k, tuple(v)) for k, v in want.items()))[:3]
@@ -123,7 +128,7 @@ def main():
     pairs = []
     expect = []
     for cp, d in sorted(canon.items()):
-        if len(d) == 2:
+        if len(d) == 2 and held[cp] and held[d[0]] and held[d[1]]:
             pairs.append("%04X %04X" % (d[0], d[1]))
             expect.append(cp if cp not in excl else None)
     got = u.oracle_go("pairs", stdin="\n".join(pairs) + "\n")
@@ -143,7 +148,17 @@ def main():
         for line in u.oracle_go("qc", form):
             a, b, _ = line.split()
             go.append((int(a, 16), int(b, 16)))
-        mine = [(a, b) for (a, b, v) in qc[form.upper()] if v == 1]
+        mine = []
+        for (a, b, v) in qc[form.upper()]:
+            if v != 1:
+                continue
+            # Keep the part of the run that Go can judge.
+            for c in range(a, b + 1):
+                if held[c]:
+                    if mine and mine[-1][1] + 1 == c:
+                        mine[-1] = (mine[-1][0], c)
+                    else:
+                        mine.append((c, c))
         merged = []
         for a, b in mine:
             if merged and merged[-1][1] + 1 == a:

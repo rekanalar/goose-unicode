@@ -2,11 +2,12 @@
 """Make unicode_data.goose: categories, combining classes and case tables.
 
 The tables come from UnicodeData.txt and CaseFolding.txt of the Unicode
-Character Database 17.0.0. Each table is checked against a second source:
-Go (Unicode 17.0.0) for the categories, the combining classes and the
-simple case mappings, and Python str.casefold for the full case folding of
-the code points that Python 16.0.0 knows. The script exits with an error
-on the first difference. Usage: make_unicode_data.py [ucd directory]
+Character Database 18.0.0. Each table is checked against a second source:
+ICU (Unicode 18.0.0) for the categories, the combining classes and the
+simple case mappings, over every code point. Go (Unicode 17.0.0) checks
+the code points that the release did not add. Python str.casefold checks
+the full case folding of the code points that Python 16.0.0 knows. The
+script exits with an error on the first difference. Usage: make_unicode_data.py [ucd directory]
 """
 import os
 import sys
@@ -48,33 +49,45 @@ def main():
             fold[int(p[0], 16)] = [int(x, 16) for x in p[2].split()]
 
     # ---- the second sources --------------------------------------
-    go_cat = []
-    for line in u.oracle_go("cat"):
-        a, b, name = line.split()
-        go_cat.append((int(a, 16), int(b, 16), u.CATS.index(name)))
-    if go_cat != cat_runs:
-        for x, y in zip(go_cat, cat_runs):
-            if x != y:
-                u.fail("category runs differ: Go %r, table %r" % (x, y))
-        u.fail("category run counts differ: Go %d, table %d" % (len(go_cat), len(cat_runs)))
+    # The ICU library holds the release of the tables, so it judges every
+    # code point. Go holds an older release, so it judges the code points
+    # that the release did not add.
+    held = u.held()
+    icu_cat = u.expand([(int(a, 16), int(b, 16), u.CATS.index(n))
+                        for a, b, n in (l.split() for l in u.oracle_go("icucat"))])
+    go_cat = u.expand([(int(a, 16), int(b, 16), u.CATS.index(n))
+                       for a, b, n in (l.split() for l in u.oracle_go("cat"))])
+    for cp in range(n):
+        if icu_cat[cp] != cat[cp]:
+            u.fail("category of U+%04X: ICU %d, table %d" % (cp, icu_cat[cp], cat[cp]))
+        if held[cp] and go_cat[cp] != cat[cp]:
+            u.fail("category of U+%04X: Go %d, table %d" % (cp, go_cat[cp], cat[cp]))
 
-    go_ccc = []
-    for line in u.oracle_go("ccc"):
-        a, b, v = line.split()
-        go_ccc.append((int(a, 16), int(b, 16), int(v)))
-    if go_ccc != ccc_runs:
-        for x, y in zip(go_ccc, ccc_runs):
-            if x != y:
-                u.fail("combining class runs differ: Go %r, table %r" % (x, y))
-        u.fail("combining class run counts differ")
+    icu_ccc = u.expand([(int(a, 16), int(b, 16), int(v))
+                        for a, b, v in (l.split() for l in u.oracle_go("icunum", "4098"))])
+    go_ccc = u.expand([(int(a, 16), int(b, 16), int(v))
+                       for a, b, v in (l.split() for l in u.oracle_go("ccc"))])
+    for cp in range(n):
+        if icu_ccc[cp] != ccc[cp]:
+            u.fail("combining class of U+%04X: ICU %d, table %d" % (cp, icu_ccc[cp], ccc[cp]))
+        if held[cp] and go_ccc[cp] != ccc[cp]:
+            u.fail("combining class of U+%04X: Go %d, table %d" % (cp, go_ccc[cp], ccc[cp]))
 
     for mode, table in (("upper", upper), ("lower", lower)):
+        icu = {}
+        for line in u.oracle_go("icucase", mode):
+            a, b = line.split()
+            icu[int(a, 16)] = int(b, 16)
+        if icu != table:
+            diff = sorted(set(icu.items()) ^ set(table.items()))[:3]
+            u.fail("the %s mapping differs from ICU: %r" % (mode, diff))
         go = {}
         for line in u.oracle_go(mode):
             a, b = line.split()
             go[int(a, 16)] = int(b, 16)
-        if go != table:
-            diff = sorted(set(go.items()) ^ set(table.items()))[:3]
+        old = {k: v for k, v in table.items() if held[k] and held[v]}
+        if go != old:
+            diff = sorted(set(go.items()) ^ set(old.items()))[:3]
             u.fail("the %s mapping differs from Go: %r" % (mode, diff))
 
     # Python 16.0.0 folds the code points that it knows.
@@ -116,7 +129,7 @@ def main():
     u.write_goose(os.path.join(u.ROOT, "unicode_data.goose"), "make_unicode_data.py", parts)
     print("categories %d runs, combining classes %d runs, upper %d, lower %d, fold %d (%d code points of the pool)"
           % (len(cat_start), len(ccc_runs), len(up_cp), len(lo_cp), len(fold_cp), len(pool)))
-    print("checked against Go; fold checked against Python for %d code points" % checked)
+    print("checked against ICU and Go; fold checked against Python for %d code points" % checked)
 
 
 main()

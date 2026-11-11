@@ -22,7 +22,7 @@ The package also gives the script, the width and the class of a code
 point. It gives the mirror flag, the numeric value and the name too.
 The name holds for every code point that the standard names.
 
-The tables hold Unicode 17.0.0.
+The tables hold Unicode 18.0.0.
 
 ## Install
 
@@ -36,7 +36,7 @@ import unicode from "rekanalar/goose-unicode@v0.18.0";
 
 | Function | What it does |
 |---|---|
-| `UNICODE_VERSION` | the version of the Unicode tables, `"17.0.0"`; Python gives it as `unicodedata.unidata_version` |
+| `UNICODE_VERSION` | the version of the Unicode tables, `"18.0.0"`; Python gives it as `unicodedata.unidata_version` |
 | `utf8_valid(s)` | true when every byte of the text starts a sequence that the standard accepts |
 | `utf8_decode(out, s)` | copies the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
 | `utf8_encode(out, cp)` | writes the UTF-8 form of one code point; refuses a surrogate and a value above U+10FFFF |
@@ -407,9 +407,9 @@ Only the ICU library holds these calls. Python, Node, Go and the Rust
 crates hold none. The table comes from the security data of the
 standard.
 
-The ICU 78 library ships an older revision of the table. The package
-uses the current revision, so the two differ on 1,526 of the 6,712
-rows. Every other row gives the same skeleton. The script
+The ICU 79.1 library ships an older revision of the table. The package
+uses the current revision, so the two skeletons differ on 228 of the
+6,712 rows. Every other row gives the same skeleton. The script
 `make_confusable_data.py` counts the difference and writes both
 skeletons into the suite.
 
@@ -497,7 +497,7 @@ unicode::bidi_order(order, levels[..]);
 ```
 
 The package agrees with every line of `BidiTest.txt` and
-`BidiCharacterTest.txt` of Unicode 17.0.0. Python has no such call in the
+`BidiCharacterTest.txt` of Unicode 18.0.0. Python has no such call in the
 standard library. Go holds `golang.org/x/text/unicode/bidi`, and Rust
 holds `unicode-bidi`. Both give a result per line, and this package
 gives the same levels for a line that spans the paragraph.
@@ -533,6 +533,9 @@ Rai.
 
 A base with U+FE0E counts as 1 when the base takes the emoji form by
 default. The keycap of a digit counts as 2.
+
+The halfwidth sound marks U+FF9E and U+FF9F count as 1, as in the Rust
+crate 0.2.3. They are combining marks in the Unicode data.
 
 A control character counts as 1 in a text, and CR LF counts as 1.
 Python `wcswidth` gives -1 for a text that holds a control character.
@@ -575,7 +578,7 @@ for the same texts. A caller can sort the keys once and search them
 many times.
 
 The order is the root order of the Unicode Collation Algorithm. The
-table comes from the root collation of CLDR at Unicode 17.0.0.
+table comes from the root collation of CLDR release 49 at Unicode 18.0.0.
 Variable characters keep their primary weight, so a hyphen orders
 like a letter. Lower case sorts before upper case through the
 tertiary level. The package decomposes each text to the canonical
@@ -677,17 +680,18 @@ if code == unicode::OK && out[0] == -1 {
   and the script reordering stay out. A caller that needs a locale gets
   the root order here.
 - The Han ideographs order by the implicit weights of the algorithm. ICU
-  78 and Node order the Han script by the Unihan radical stroke order.
+  79 and Node order the Han script by the Unihan radical stroke order.
   Go, Rust and the conformance file of the standard follow the implicit
   weights, as this package does.
-- The four references carry tables of different Unicode versions. On
-  50,000 random pairs of the whole range, ICU 78 and Node agree. Go and
-  Rust differ from ICU 78 on about 0.7 percent of the pairs. Each
-  difference holds a Han pair or a code point with no row in one table.
-  The script `diff_coll.py` prints the differences.
+- The four references carry tables of different Unicode versions. Take
+  50,000 random pairs of the whole range. ICU 79.1 differs from Node
+  (ICU 78) on 207 pairs, from Rust on 165 and from Go on 560. Most
+  differences hold a code point that one table lacks. The script
+  `diff_coll.py` prints the differences. The package follows the
+  conformance file of CLDR release 49.
 - A discontiguous match scans at most 32 marks. A text that holds more
   marks between the parts of a contraction orders the parts apart. ICU
-  78 scans the marks without a bound.
+  79 scans the marks without a bound.
 - The East Asian form skips the same marks as Rust after a combining
   solidus overlay. Rust reads one field of the Character Database
   loosely. It adds seven number signs, such as U+1011B, to the skipped
@@ -706,10 +710,27 @@ if code == unicode::OK && out[0] == -1 {
 - The package applies no language specific case rule, so it gives no
   Turkish dotless i and no Lithuanian dot above. Python and Node apply
   these rules only with a language tag too.
-- The tables hold Unicode 17.0.0. Python `unicodedata` holds Unicode
+- The tables hold Unicode 18.0.0. Python `unicodedata` holds Unicode
   16.0.0, so it gives different answers for the code points that Unicode
-  17 added. Node holds Unicode 17.0.0 through ICU 78. Go holds Unicode
-  17.0.0 in the standard library and in `golang.org/x/text/unicode/norm`.
+  17 and 18 added. Node holds Unicode 17.0.0 through ICU 78. Go holds
+  Unicode 17.0.0 in the standard library and in
+  `golang.org/x/text/unicode/norm`.
+- The tests judge every code point against ICU 79.1, which holds Unicode
+  18.0.0. Node, Go and Python judge the code points that 18.0.0 did not
+  add. Where 18.0.0 changed an older code point, the test names it.
+- Unicode 18.0.0 changed three rules. Rule GB9c of the cluster split now
+  joins a conjunct linker, any marks and a consonant. A consonant that
+  follows a linker joins the cluster, and a mark after the linker no
+  longer ends the join. Rule LB12a of the line break no longer allows a
+  break between a break-after character and a no-break space. The
+  collation gives the Jurchen and Seal ranges their own implicit weights.
+- Node holds the earlier GB9c rule. It splits 10 of the 853 held cases of
+  the cluster test file as the earlier rule does.
+- ICU 79.1 holds no name for the Jurchen and Seal code points. The file
+  `DerivedName.txt` names them, and the package gives those names. The
+  test checks that ICU gives none. ICU also accepts a name with a space
+  at an end, or with a hyphen for a space. The package takes the exact
+  name only.
 - The quick check tables come from the same version of the Character
   Database as the other tables. A later Unicode version can add a table
   entry and change the answer of `is_normalized` for a new code point.
@@ -834,11 +855,11 @@ goose run examples/scripts.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
-files of the Unicode Character Database 17.0.0 and write numbers only.
+files of the Unicode Character Database 18.0.0 and write numbers only.
 Each script checks its table against a second source and fails on a
 difference. The sources are the Go standard library and the packages of
-`golang.org/x/text`. They are also the ICU library, Node with ICU 78,
-Python and the Rust `unicode-width` crate.
+`golang.org/x/text`. They are also the ICU library 79.1, Node with ICU 78,
+Python and the Rust `unicode-width` crate 0.2.3.
 
 The width script checks every code point against the crate. It also
 writes 50,040 texts of the sequence characters. Each text has the width
@@ -853,7 +874,7 @@ python3 make_width_data.py
 The scripts need the files of the Character Database. The first argument
 of each script names the directory that holds them. The default is the
 directory `tmp/ucd` of the management repository. The files come from
-`https://www.unicode.org/Public/17.0.0/ucd/`. The word, sentence and line break
+`https://www.unicode.org/Public/18.0.0/ucd/`. The word, sentence and line break
 files sit in its `auxiliary` directory. The general category file sits in
 its `extracted` directory.
 

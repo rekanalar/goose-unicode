@@ -2,12 +2,13 @@
 """Make props_data.goose: the script, width, class, mirror, numeric and
 name tables.
 
-The tables come from the files of the Unicode Character Database 17.0.0.
-Each table is checked against a second source: the Go standard library
-for the scripts, golang.org/x/text/width for the widths, x/text bidi and
-ICU for the classes, ICU for the mirror partners and the numeric values,
-and ICU and Python for the names. The script exits with an error on the
-first difference. Usage: make_props_data.py [ucd directory]
+The tables come from the files of the Unicode Character Database 18.0.0.
+Each table is checked against a second source. ICU holds the release of
+the tables and judges every code point: the scripts, the widths, the
+classes, the mirror partners, the numeric values and the names. The Go
+standard library, golang.org/x/text and Python hold older releases, so
+they judge the code points that the release did not add only in part.
+The script exits with an error on the first difference. Usage: make_props_data.py [ucd directory]
 """
 import os
 import re
@@ -75,12 +76,22 @@ def fail(msg):
 ucd_path = u.ucd_path
 
 
+def same_where(mine, other, default, mask, what, who):
+    """Fail on the first code point of the mask where the two run lists
+    differ. The runs are (first, last, value) tuples."""
+    a = u.expand(mine, default)
+    b = u.expand(other, default)
+    for cp in range(u.MAX_CP + 1):
+        if mask[cp] and a[cp] != b[cp]:
+            fail("%s of U+%04X: %s %r, table %r" % (what, cp, who, b[cp], a[cp]))
+
+
 def main():
     u.check_version()
     rows = u.unicode_data()
     o = Oracle()
 
-    # ---- the script table, checked against the Go standard library ----
+    # ---- the script table, checked against ICU and Go --------------------
     entries, defaults = parse_props("Scripts.txt")
     names = ["Unknown", "Common", "Inherited"]
     idx = {}
@@ -93,39 +104,50 @@ def main():
                 names.append(val)
     script_vals = value_array(entries, defaults, "Unknown")
     runs = u.runs_of([names.index(x) for x in script_vals])
+    mine = [(r[0], r[1], names[r[2]]) for r in runs]
+    all_cps = bytearray([1]) * (u.MAX_CP + 1)
+    icu_runs = [(int(x), int(y), n) for x, y, n in
+                ((int(l.split()[0], 16), int(l.split()[1], 16), l.split()[2])
+                 for l in u.oracle_go("icuprop", "4106"))]
+    same_where(mine, icu_runs, "Unknown", all_cps, "script", "ICU")
     go_runs = []
     for line in o.go("script"):
         a, b, name = line.split()
         go_runs.append((int(a, 16), int(b, 16), name))
-    mine = [(r[0], r[1], names[r[2]]) for r in runs]
-    if go_runs != mine:
-        for x, y in zip(go_runs, mine):
-            if x != y:
-                fail("script runs differ: Go %r, table %r" % (x, y))
-        fail("script run counts differ: Go %d, table %d" % (len(go_runs), len(mine)))
+    same_where(mine, go_runs, "Unknown", u.held(), "script", "Go")
     script_start = [r[0] for r in runs]
     script_index = [r[2] for r in runs]
     script_names, script_off = pack(names)
 
-    # ---- the width table, checked against x/text ----------------------
+    # ---- the width table, checked against ICU and x/text --------------
     # The file names its defaults in its comments. The unassigned code
-    # points of the CJK blocks and of planes 2 and 3 default to Wide.
+    # points of the CJK blocks and of planes 2 and 3 default to Wide. The
+    # two ranges of the planes end at U+2FFFD and U+3FFFD, so the four
+    # noncharacters at the end of the planes stay Neutral.
     entries, defaults = parse_props("EastAsianWidth.txt")
     defaults += [((0x3400, 0x4DBF), "W"), ((0x4E00, 0x9FFF), "W"),
-                 ((0xF900, 0xFAFF), "W"), ((0x20000, 0x2FFFF), "W"),
-                 ((0x30000, 0x3FFFF), "W")]
+                 ((0xF900, 0xFAFF), "W"), ((0x20000, 0x2FFFD), "W"),
+                 ((0x30000, 0x3FFFD), "W")]
     widths = ["N", "Na", "A", "W", "F", "H"]
     width_vals = value_array(entries, defaults, "N")
     runs = u.runs_of([widths.index(x) for x in width_vals])
+    # ICU numbers the widths: neutral, ambiguous, halfwidth, fullwidth,
+    # narrow, wide.
+    icu_width = [widths.index(k) for k in ("N", "A", "H", "F", "Na", "W")]
+    icu_runs = [(int(l.split()[0], 16), int(l.split()[1], 16), icu_width[int(l.split()[2])])
+                for l in u.oracle_go("icunum", "4100")]
+    same_where(runs, icu_runs, 0, all_cps, "width", "ICU")
     go_runs = []
     for line in o.go("width"):
         a, b, k = line.split()
         go_runs.append((int(a, 16), int(b, 16), widths.index(k)))
-    if go_runs != runs:
-        for x, y in zip(go_runs, runs):
-            if x != y:
-                fail("width runs differ: Go %r, table %r" % (x, y))
-        fail("width run counts differ: Go %d, table %d" % (len(go_runs), len(runs)))
+    # Go x/text gives Wide to the four noncharacters at the end of planes
+    # 2 and 3. The standard lists no width for them, so they are Neutral.
+    # ICU agrees with the standard, so Go skips these four.
+    go_mask = bytearray(u.held())
+    for cp in (0x2FFFE, 0x2FFFF, 0x3FFFE, 0x3FFFF):
+        go_mask[cp] = 0
+    same_where(runs, go_runs, 0, go_mask, "width", "Go")
     width_start = [r[0] for r in runs]
     width_end = [r[1] for r in runs]
     width_val = [r[2] for r in runs]
@@ -159,7 +181,11 @@ def main():
         for cp in (lo, hi):
             if 0xD800 <= cp <= 0xDFFF:
                 continue
-            if assigned[cp] and bidi_vals[cp] != name:
+            # A class that the release of the tables corrected on an old
+            # code point stays out too: Go judges only its own release.
+            # 18.0.0 moved three Balinese marks from NSM to L.
+            if assigned[cp] and u.held()[cp] and bidi_vals[cp] != name and \
+                    not (0x1B3A <= cp <= 0x1B3C or cp == 0x1B42):
                 fail("class of %04X differs from x/text: %s, %s"
                      % (cp, bidi_vals[cp], name))
     bidi_start = [r[0] for r in runs]
@@ -263,7 +289,7 @@ def main():
         (0x4E00, 0x9FFF - 0x4E00 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x20000, 0x2A6DF - 0x20000 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x2A700, 0x2B73F - 0x2A700 + 1, "CJK UNIFIED IDEOGRAPH-"),
-        (0x2B740, 0x2B81D - 0x2B740 + 1, "CJK UNIFIED IDEOGRAPH-"),
+        (0x2B740, 0x2B81E - 0x2B740 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x2B820, 0x2CEAD - 0x2B820 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x2CEB0, 0x2EBE0 - 0x2CEB0 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x2EBF0, 0x2EE5D - 0x2EBF0 + 1, "CJK UNIFIED IDEOGRAPH-"),
@@ -271,7 +297,9 @@ def main():
         (0x31350, 0x323AF - 0x31350 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x323B0, 0x33479 - 0x323B0 + 1, "CJK UNIFIED IDEOGRAPH-"),
         (0x17000, 0x187FF - 0x17000 + 1, "TANGUT IDEOGRAPH-"),
-        (0x18D00, 0x18D1E - 0x18D00 + 1, "TANGUT IDEOGRAPH-"),
+        (0x18D00, 0x18D20 - 0x18D00 + 1, "TANGUT IDEOGRAPH-"),
+        (0x18E00, 0x19191 - 0x18E00 + 1, "JURCHEN CHARACTER-"),
+        (0x3D000, 0x3FC3F - 0x3D000 + 1, "SMALL SEAL CHARACTER-"),
         (0x1B170, 0x1B2FB - 0x1B170 + 1, "NUSHU CHARACTER-"),
         (0x18B00, 0x18CFF - 0x18B00 + 1, "KHITAN SMALL SCRIPT CHARACTER-"),
     ):
@@ -288,21 +316,43 @@ def main():
             parts.append(jamo[T_BASE + t - 1])
         names[cp] = "HANGUL SYLLABLE " + "".join(parts)
 
+    # The names of DerivedName.txt are the standard. Every name of the
+    # table must equal the name there, and the file names no other code
+    # point that has a name here.
+    dn = {}
+    for line in u.lines_of("extracted/DerivedName.txt"):
+        rng, text = [x.strip() for x in line.split(";", 1)]
+        lo, hi = u.parse_range(rng)
+        for cp in range(lo, hi + 1):
+            dn[cp] = text.replace("*", hexname(cp)) if "*" in text else text
+    for cp in sorted(names):
+        if dn.get(cp) != names[cp]:
+            fail("name of %04X differs from DerivedName.txt: %r, table %r"
+                 % (cp, dn.get(cp), names[cp]))
+    extra = [cp for cp in dn if cp not in names and not dn[cp].startswith("<")]
+    if extra:
+        fail("DerivedName.txt names %d code points that the table lacks, e.g. %04X"
+             % (len(extra), sorted(extra)[0]))
+
+    # ICU holds the release of the tables, yet it gives no name to the
+    # Jurchen and Seal ranges that the release added. It judges the rest.
     icu_names = {}
     for line in o.go("name"):
         cp, name = line.split(" ", 1)
         icu_names[int(cp, 16)] = name
-    if icu_names != names:
-        only_icu = set(icu_names) - set(names)
-        only_mine = set(names) - set(icu_names)
+    unnamed = lambda cp: 0x18E00 <= cp <= 0x19191 or 0x3D000 <= cp <= 0x3FC3F
+    judged = {cp: n for cp, n in names.items() if not unnamed(cp)}
+    if icu_names != judged:
+        only_icu = set(icu_names) - set(judged)
+        only_mine = set(judged) - set(icu_names)
         if only_icu or only_mine:
             fail("the name sets differ: ICU only %d, table only %d, e.g. %r %r"
                  % (len(only_icu), len(only_mine),
                     sorted(only_icu)[:3], sorted(only_mine)[:3]))
-        for cp in sorted(names):
-            if names[cp] != icu_names.get(cp):
+        for cp in sorted(judged):
+            if judged[cp] != icu_names.get(cp):
                 fail("name of %04X differs: ICU %r, table %r"
-                     % (cp, icu_names.get(cp), names[cp]))
+                     % (cp, icu_names.get(cp), judged[cp]))
     for cp, name in names.items():
         try:
             py = unicodedata.name(chr(cp))
@@ -388,7 +438,7 @@ def main():
     num_case_cps = sorted(nums)
     num_case_parts = [
         u.array("NUM_CASE_CP", num_case_cps,
-                "A code point with a numeric value, as ICU 78 holds it."),
+                "A code point with a numeric value, as ICU 79 holds it."),
         u.array("NUM_CASE_NUM", [nums[cp][0] for cp in num_case_cps],
                 "The numerator of the value."),
         u.array("NUM_CASE_DEN", [nums[cp][1] for cp in num_case_cps],
