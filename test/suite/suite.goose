@@ -40,6 +40,8 @@ import flags_cases;
 import flags_suite;
 import line_cases;
 import line_suite;
+import enum_cases;
+import enum_suite;
 import name_cases;
 import name_suite;
 import char_cases;

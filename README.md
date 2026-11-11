@@ -109,6 +109,20 @@ import unicode from "rekanalar/goose-unicode@v0.19.0";
 | `sentence_next(s, at)` | the end of the sentence that starts at the byte offset; gives the code and the end |
 | `sentence_count(s)` | the number of sentences in the text |
 | `line_break_class(cp)` | the `Line_Break` class of a code point, as an `LB_` constant, before rule LB1 resolves it |
+| `grapheme_break(cp)` | the `Grapheme_Cluster_Break` of a code point, as its position in the alias file of the standard |
+| `grapheme_break_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `word_break(cp)` | the `Word_Break` of a code point, as its position in the alias file of the standard |
+| `word_break_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `sentence_break(cp)` | the `Sentence_Break` of a code point, as its position in the alias file of the standard |
+| `sentence_break_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `hangul_syllable_type(cp)` | the `Hangul_Syllable_Type` of a code point, as its position in the alias file of the standard |
+| `hangul_syllable_type_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `indic_syllabic_category(cp)` | the `Indic_Syllabic_Category` of a code point, as its position in the alias file of the standard |
+| `indic_syllabic_category_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `indic_positional_category(cp)` | the `Indic_Positional_Category` of a code point, as its position in the alias file of the standard |
+| `indic_positional_category_name(cp)` | the short name of that value, such as `LE` or `Virama` |
+| `vertical_orientation(cp)` | the `Vertical_Orientation` of a code point, as its position in the alias file of the standard |
+| `vertical_orientation_name(cp)` | the short name of that value, such as `LE` or `Virama` |
 | `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31; gives the code and the offset of the first bad byte |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
 | `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
@@ -413,6 +427,25 @@ uses the current revision, so the two skeletons differ on 228 of the
 `make_confusable_data.py` counts the difference and writes both
 skeletons into the suite.
 
+## Enumerated properties
+
+Seven calls give an enumerated property of a code point. They are
+`grapheme_break`, `word_break`, `sentence_break`, `hangul_syllable_type`,
+`indic_syllabic_category`, `indic_positional_category` and
+`vertical_orientation`. ICU gives them through `u_getIntPropertyValue`, and
+the Rust `icu_properties` crate gives them as types. Python, Node and Go
+give none of them.
+
+The number is the position of the value in `PropertyValueAliases.txt`,
+counted from zero for each property. The `_name` call gives the short name
+of the value. A code point outside U+0000 to U+10FFFF gives the default
+value of the property.
+
+```goose
+print(unicode::sentence_break_name(0x41));            // UP
+print(unicode::indic_syllabic_category_name(0x94D));  // Virama
+```
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -657,6 +690,12 @@ if code == unicode::OK && out[0] == -1 {
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
+- The numbers of the seven enumerated properties follow the alias file, not
+  the numbers of ICU. A later release can add a value and move a number.
+  Compare the name to stay safe. The package has no constant for each value
+  and no call that finds a value by its name. The alias file also holds
+  values that the standard no longer uses, such as `E_Base`. They keep
+  their positions, and no code point has them.
 - The confusable calls give the skeleton and the test of UAX #39. The
   restriction levels, the identifier status checks and the mixed
   script detection of the same report stay out. Only ICU holds the
@@ -850,6 +889,7 @@ goose run examples/properties.goose
 goose run examples/casefold.goose
 goose run examples/confusable.goose
 goose run examples/lookup.goose
+goose run examples/enumprops.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
 ```
@@ -898,6 +938,7 @@ python3 make_line_data.py
 python3 make_name_data.py
 python3 make_char_data.py
 python3 make_script_data.py
+python3 make_enum_data.py
 python3 diff_line.py
 python3 make_coll_data.py
 python3 diff_coll.py

@@ -50,6 +50,8 @@ import coll_data;
 import collate;
 import confusable_data;
 import confusable;
+import enum_data;
+import enumprop;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "18.0.0";
