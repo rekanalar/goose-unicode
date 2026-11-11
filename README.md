@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.15.0";
+import unicode from "rekanalar/goose-unicode@v0.16.0";
 ```
 
 ## API
@@ -81,6 +81,8 @@ import unicode from "rekanalar/goose-unicode@v0.15.0";
 | `is_emoji(cp)`, `is_emoji_presentation(cp)`, `is_emoji_modifier(cp)`, `is_emoji_modifier_base(cp)`, `is_emoji_component(cp)`, `is_extended_pictographic(cp)` | the emoji properties of the standard |
 | `is_zwj(cp)`, `is_emoji_presentation_selector(cp)`, `is_text_presentation_selector(cp)`, `is_regional_indicator(cp)`, `is_tag_character(cp)` | the code points that build emoji sequences |
 | `is_id_start(cp)`, `is_id_continue(cp)`, `is_xid_start(cp)`, `is_xid_continue(cp)` | the identifier properties of the standard |
+| `has_property(cp, prop)` | true when the code point holds the binary property; `prop` is a `PROP_` constant such as `PROP_WHITE_SPACE` |
+| `property_name(prop)`, `property_by_name(name)` | the name of a binary property, such as `White_Space`, and the constant of a name; -1 when there is none |
 | `mirrored(cp)` | true when the code point is mirrored |
 | `mirror_of(cp)` | the mirror partner of a code point; a code point that is not mirrored gives itself |
 | `numeric_value(cp)` | the numeric value as the numerator and the denominator; a denominator of zero means no value |
@@ -337,6 +339,31 @@ print(unicode::category_group(0x31));   // 2, GROUP_NUMBER
 A call with a value outside U+0000 to U+10FFFF gives false. The group of
 such a value is `GROUP_OTHER`.
 
+## Binary properties
+
+The `has_property` call answers the yes or no properties of the
+standard. The package holds 53 of them. They are the emoji and identifier
+properties, `Alphabetic`, `Lowercase`, `Uppercase`, `Cased` and
+`Case_Ignorable`. They include the five `Changes_When_` case properties,
+`Math`, `Dash`, `Hex_Digit`, `White_Space` and
+`Default_Ignorable_Code_Point`. The rest come from the files
+`PropList.txt` and `DerivedCoreProperties.txt`, where the references
+expose them. `Changes_When_NFKC_Casefolded` is there too.
+
+The `PROP_` constants give the number of each property. The `property_name` call
+gives the name.
+
+```goose
+print(unicode::has_property(0xA0, unicode::PROP_WHITE_SPACE));   // true
+print(unicode::has_property(0x2014, unicode::PROP_DASH));        // true
+print(unicode::property_by_name("alphabetic"));                  // PROP_ALPHABETIC
+```
+
+A code point outside U+0000 to U+10FFFF and a value that is no property
+give false. The `property_by_name` call ignores the case of ASCII letters
+and nothing else. It gives -1 for the loose names of ICU, such as
+`whitespace`.
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -578,6 +605,14 @@ if code == unicode::OK && out[0] == -1 {
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
+- The binary properties hold the properties that ICU, Node and Go
+  expose. The contributory `Other_` properties stay out, and so do the
+  deprecated `Hyphen` and `Grapheme_Link`. The properties with more than
+  two values have their own calls. Node gives no regex class for five
+  properties: `IDS_Unary_Operator`, `Prepended_Concatenation_Mark`,
+  `Modifier_Combining_Mark` and the two `ID_Compat_Math` ones. The ICU
+  library is the only oracle for those five. The Rust
+  `icu_properties` crate is no oracle of this package.
 - The collation follows the root locale and no tailoring. The strength,
   the alternate shifted weighting, the numeric order, the case options
   and the script reordering stay out. A caller that needs a locale gets
@@ -688,6 +723,11 @@ beyond the reference libraries.
   take quadratic time. A key above `MAX_OUTPUT` gives `ERR_TOO_LONG`
   and writes nothing.
 
+- The `property_by_name` call stops a query above 28 bytes before any
+  compare. The longest name holds 28 bytes. A search makes at most 53
+  compares of the length of the query. A hostile query cannot take more
+  time.
+
 These risks stay.
 
 - The package does not sanitize the text. It gives the category of a code
@@ -717,6 +757,7 @@ goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/collate.goose
+goose run examples/properties.goose
 goose run examples/lookup.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
@@ -769,6 +810,7 @@ python3 make_script_data.py
 python3 diff_line.py
 python3 make_coll_data.py
 python3 diff_coll.py
+python3 diff_props.py
 ```
 
 The collation script reads the root collation table and the conformance
@@ -781,8 +823,9 @@ The title script checks its table against the Go library and the Rust
 `unicode-case-mapping` crate. The crate holds an older release of the
 standard, so the script warns about the newest code points. The script
 `diff_title.py` compares random texts with the Go library. The flags script
-checks the ten emoji and identifier properties against Node over every
-code point.
+checks every binary property against the ICU library and Node over every
+code point. The script `diff_props.py` compares the properties that Go
+holds.
 
 ## License
 

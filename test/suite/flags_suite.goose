@@ -67,16 +67,25 @@ fn flag_sample_points() -> i64 {
         let cp = FL_CP[k];
         let m = FL_MASK[k];
         var got = 0;
-        if unicode::is_emoji(cp) { got |= 1; }
-        if unicode::is_emoji_presentation(cp) { got |= 2; }
-        if unicode::is_emoji_modifier(cp) { got |= 4; }
-        if unicode::is_emoji_modifier_base(cp) { got |= 8; }
-        if unicode::is_emoji_component(cp) { got |= 16; }
-        if unicode::is_extended_pictographic(cp) { got |= 32; }
-        if unicode::is_id_start(cp) { got |= 64; }
-        if unicode::is_id_continue(cp) { got |= 128; }
-        if unicode::is_xid_start(cp) { got |= 256; }
-        if unicode::is_xid_continue(cp) { got |= 512; }
+        for p in 0..unicode::PROP_COUNT {
+            if unicode::has_property(cp, p) { got |= 1 << p; }
+        }
+        // The ten older calls read the same bits.
+        var old = 0;
+        if unicode::is_emoji(cp) { old |= 1; }
+        if unicode::is_emoji_presentation(cp) { old |= 2; }
+        if unicode::is_emoji_modifier(cp) { old |= 4; }
+        if unicode::is_emoji_modifier_base(cp) { old |= 8; }
+        if unicode::is_emoji_component(cp) { old |= 16; }
+        if unicode::is_extended_pictographic(cp) { old |= 32; }
+        if unicode::is_id_start(cp) { old |= 64; }
+        if unicode::is_id_continue(cp) { old |= 128; }
+        if unicode::is_xid_start(cp) { old |= 256; }
+        if unicode::is_xid_continue(cp) { old |= 512; }
+        if old != (got & 1023) {
+            print("FAIL: the old calls differ at U+", cp, "\n");
+            bad += 1;
+        }
         if got != m {
             print("FAIL: flags of U+", cp, " are ", got, ", want ", m, "\n");
             bad += 1;
@@ -107,8 +116,64 @@ fn flag_groups() -> i64 {
     return bad;
 }
 
+// Well known code points for the binary properties.
+fn prop_samples() -> i64 {
+    var bad = 0;
+    bad += fl_check(unicode::has_property(0x20, unicode::PROP_WHITE_SPACE), "space is white space");
+    bad += fl_check(unicode::has_property(0xA0, unicode::PROP_WHITE_SPACE), "no break space");
+    bad += fl_check(!unicode::has_property(0x200B, unicode::PROP_WHITE_SPACE), "zero width space");
+    bad += fl_check(unicode::has_property(0x61, unicode::PROP_ALPHABETIC)
+        && unicode::has_property(0x61, unicode::PROP_LOWERCASE)
+        && !unicode::has_property(0x61, unicode::PROP_UPPERCASE), "a");
+    bad += fl_check(unicode::has_property(0x41, unicode::PROP_UPPERCASE)
+        && unicode::has_property(0x41, unicode::PROP_CASED), "A");
+    bad += fl_check(unicode::has_property(0x2D, unicode::PROP_DASH)
+        && unicode::has_property(0x2014, unicode::PROP_DASH), "dashes");
+    bad += fl_check(unicode::has_property(0x66, unicode::PROP_HEX_DIGIT)
+        && unicode::has_property(0x66, unicode::PROP_ASCII_HEX_DIGIT)
+        && unicode::has_property(0xFF26, unicode::PROP_HEX_DIGIT)
+        && !unicode::has_property(0xFF26, unicode::PROP_ASCII_HEX_DIGIT), "hex digits");
+    bad += fl_check(unicode::has_property(0xAD, unicode::PROP_DEFAULT_IGNORABLE_CODE_POINT), "soft hyphen");
+    bad += fl_check(unicode::has_property(0xFFFF, unicode::PROP_NONCHARACTER_CODE_POINT), "noncharacter");
+    bad += fl_check(unicode::has_property(0x4E00, unicode::PROP_IDEOGRAPHIC)
+        && unicode::has_property(0x4E00, unicode::PROP_UNIFIED_IDEOGRAPH), "han");
+    bad += fl_check(unicode::has_property(0x22, unicode::PROP_QUOTATION_MARK), "quote");
+    bad += fl_check(unicode::has_property(0x69, unicode::PROP_SOFT_DOTTED), "i");
+    bad += fl_check(unicode::has_property(0x200D, unicode::PROP_JOIN_CONTROL), "joiner");
+    bad += fl_check(unicode::has_property(0x300, unicode::PROP_GRAPHEME_EXTEND)
+        && !unicode::has_property(0x300, unicode::PROP_GRAPHEME_BASE), "grave accent");
+    bad += fl_check(unicode::has_property(0x2B, unicode::PROP_MATH), "plus");
+    bad += fl_check(unicode::has_property(0x21, unicode::PROP_TERMINAL_PUNCTUATION)
+        && unicode::has_property(0x2E, unicode::PROP_SENTENCE_TERMINAL), "terminators");
+    bad += fl_check(unicode::has_property(0x2FFE, unicode::PROP_IDS_UNARY_OPERATOR), "ids unary");
+    // The names.
+    bad += fl_check(unicode::property_name(unicode::PROP_WHITE_SPACE) == "White_Space", "name");
+    bad += fl_check(unicode::property_name(unicode::PROP_EMOJI) == "Emoji", "first name");
+    bad += fl_check(unicode::property_name(unicode::PROP_COUNT - 1) == "ID_Compat_Math_Continue", "last name");
+    bad += fl_check(unicode::property_name(-1).len == 0 && unicode::property_name(unicode::PROP_COUNT).len == 0, "no name");
+    for p in 0..unicode::PROP_COUNT {
+        bad += fl_check(unicode::property_by_name(unicode::property_name(p)) == p, "name round trip");
+    }
+    bad += fl_check(unicode::property_by_name("white_space") == unicode::PROP_WHITE_SPACE, "name case");
+    bad += fl_check(unicode::property_by_name("Whitespace") == -1 && unicode::property_by_name("") == -1, "bad name");
+    bad += fl_check(unicode::property_by_name("White_Space_Extra_Extra_Extra_Extra") == -1, "long name");
+    // A value outside the range and a value that is no property give false.
+    bad += fl_check(!unicode::has_property(-1, unicode::PROP_ALPHABETIC)
+        && !unicode::has_property(0x110000, unicode::PROP_ALPHABETIC), "outside");
+    bad += fl_check(!unicode::has_property(0x61, -1) && !unicode::has_property(0x61, unicode::PROP_COUNT)
+        && !unicode::has_property(0x61, 63) && !unicode::has_property(0x61, 100), "no property");
+    // A lone surrogate holds no property.
+    var any = false;
+    for p in 0..unicode::PROP_COUNT {
+        if unicode::has_property(0xD800, p) { any = true; }
+    }
+    bad += fl_check(!any, "surrogate");
+    return bad;
+}
+
 fn run_flags() -> i64 {
     var bad = 0;
+    bad += prop_samples();
     bad += flag_samples();
     bad += flag_range();
     bad += flag_sample_points();

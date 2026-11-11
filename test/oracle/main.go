@@ -25,6 +25,8 @@ int32_t u_charDigitValue_78(int32_t c);
 int32_t uscript_getScriptExtensions_78(int32_t c, int32_t* scripts, int32_t capacity, int32_t* err);
 const char* uscript_getName_78(int32_t code);
 void u_charAge_78(int32_t c, uint8_t* versionArray);
+int32_t u_getPropertyEnum_78(const char* alias);
+int8_t u_hasBinaryProperty_78(int32_t c, int32_t which);
 void* ucol_open_78(const char* loc, int32_t* err);
 void ucol_close_78(void* col);
 int32_t ucol_strcoll_78(void* col, const uint16_t* a, int32_t alen, const uint16_t* b, int32_t blen);
@@ -500,6 +502,40 @@ func main() {
 			fmt.Fprintln(w, C.ucol_strcoll_78(col, (*C.uint16_t)(unsafe.Pointer(&ua[0])),
 				C.int32_t(len(ua)), (*C.uint16_t)(unsafe.Pointer(&ub[0])), C.int32_t(len(ub))))
 		}
+	case "icebin":
+		// The runs of one binary property from the ICU library. The
+		// argument is the name of the property. ICU gives -1 for a
+		// name it does not know, and the mode prints "unknown".
+		cname := C.CString(os.Args[2])
+		prop := C.u_getPropertyEnum_78(cname)
+		C.free(unsafe.Pointer(cname))
+		if prop < 0 {
+			fmt.Fprintln(w, "unknown")
+			break
+		}
+		w.Flush()
+		runs(func(r rune) string {
+			if C.u_hasBinaryProperty_78(C.int32_t(r), prop) != 0 {
+				return "Y"
+			}
+			return "N"
+		}, func(v string) bool { return v == "N" }, true)
+	case "goprop":
+		// The runs of one property of the unicode.Properties table of
+		// the Go standard library. The argument is the name. The mode
+		// prints "unknown" when the table has no such name.
+		tab, ok := unicode.Properties[os.Args[2]]
+		if !ok {
+			fmt.Fprintln(w, "unknown")
+			break
+		}
+		w.Flush()
+		runs(func(r rune) string {
+			if unicode.Is(tab, r) {
+				return "Y"
+			}
+			return "N"
+		}, func(v string) bool { return v == "N" }, true)
 	case "iceage":
 		// The runs of the age of every code point, as major.minor.
 		runs(func(r rune) string {

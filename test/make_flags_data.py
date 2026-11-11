@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Make flags_data.goose: one range table with a bit mask for the emoji
-and identifier properties.
+"""Make flags_data.goose: one range table with a bit mask for the binary
+properties, and the names of the properties.
 
-The properties come from emoji-data.txt and DerivedCoreProperties.txt.
-Each property is checked against the regular expression engine of Node,
-which holds Unicode 17.0, over every code point. The script exits with an
-error on the first difference. It also writes the suite file: sample code
+The properties come from emoji-data.txt, DerivedCoreProperties.txt,
+PropList.txt and DerivedNormalizationProps.txt. Each property is checked
+against the ICU library over every code point, and against the regular
+expression engine of Node, which holds Unicode 17.0, where Node has a
+class for it. The script exits with an error on the first difference. It also writes the suite file: sample code
 points with their masks from Node, and the runs of the group of the
 general category from the Go library.
 Usage: make_flags_data.py [ucd directory]
@@ -16,20 +17,42 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import ucdlib as u
 
-# The bit of each property in the mask. The code of flags.goose holds the
-# same numbers.
-BITS = [
-    ("emoji-data.txt", "Emoji", 1),
-    ("emoji-data.txt", "Emoji_Presentation", 2),
-    ("emoji-data.txt", "Emoji_Modifier", 4),
-    ("emoji-data.txt", "Emoji_Modifier_Base", 8),
-    ("emoji-data.txt", "Emoji_Component", 16),
-    ("emoji-data.txt", "Extended_Pictographic", 32),
-    ("DerivedCoreProperties.txt", "ID_Start", 64),
-    ("DerivedCoreProperties.txt", "ID_Continue", 128),
-    ("DerivedCoreProperties.txt", "XID_Start", 256),
-    ("DerivedCoreProperties.txt", "XID_Continue", 512),
+# The properties, in the order of their numbers. The number of a property
+# is its bit in the mask. The code of flags.goose holds the same numbers.
+# Node holds no regular expression class for the last five.
+CORE = "DerivedCoreProperties.txt"
+LIST = "PropList.txt"
+NORM = "DerivedNormalizationProps.txt"
+EMOJI = "emoji-data.txt"
+PROPS = [
+    (EMOJI, "Emoji"), (EMOJI, "Emoji_Presentation"), (EMOJI, "Emoji_Modifier"),
+    (EMOJI, "Emoji_Modifier_Base"), (EMOJI, "Emoji_Component"),
+    (EMOJI, "Extended_Pictographic"),
+    (CORE, "ID_Start"), (CORE, "ID_Continue"), (CORE, "XID_Start"), (CORE, "XID_Continue"),
+    (CORE, "Alphabetic"), (CORE, "Case_Ignorable"), (CORE, "Cased"),
+    (CORE, "Changes_When_Casefolded"), (CORE, "Changes_When_Casemapped"),
+    (CORE, "Changes_When_Lowercased"), (CORE, "Changes_When_Titlecased"),
+    (CORE, "Changes_When_Uppercased"), (CORE, "Default_Ignorable_Code_Point"),
+    (CORE, "Grapheme_Base"), (CORE, "Grapheme_Extend"), (CORE, "Lowercase"),
+    (CORE, "Math"), (CORE, "Uppercase"),
+    (LIST, "ASCII_Hex_Digit"), (LIST, "Bidi_Control"), (LIST, "Dash"),
+    (LIST, "Deprecated"), (LIST, "Diacritic"), (LIST, "Extender"),
+    (LIST, "Hex_Digit"), (LIST, "IDS_Binary_Operator"),
+    (LIST, "IDS_Trinary_Operator"), (LIST, "Ideographic"), (LIST, "Join_Control"),
+    (LIST, "Logical_Order_Exception"), (LIST, "Noncharacter_Code_Point"),
+    (LIST, "Pattern_Syntax"), (LIST, "Pattern_White_Space"),
+    (LIST, "Quotation_Mark"), (LIST, "Radical"), (LIST, "Sentence_Terminal"),
+    (LIST, "Soft_Dotted"), (LIST, "Terminal_Punctuation"),
+    (LIST, "Unified_Ideograph"), (LIST, "Variation_Selector"), (LIST, "White_Space"),
+    (NORM, "Changes_When_NFKC_Casefolded"),
+    (LIST, "IDS_Unary_Operator"), (LIST, "Prepended_Concatenation_Mark"),
+    (LIST, "Modifier_Combining_Mark"), (LIST, "ID_Compat_Math_Start"),
+    (LIST, "ID_Compat_Math_Continue"),
 ]
+NO_NODE = {"IDS_Unary_Operator", "Prepended_Concatenation_Mark",
+           "Modifier_Combining_Mark", "ID_Compat_Math_Start",
+           "ID_Compat_Math_Continue"}
+BITS = [(f, p, 1 << i) for i, (f, p) in enumerate(PROPS)]
 GROUPS = {"L": 0, "M": 1, "N": 2, "P": 3, "S": 4, "Z": 5, "C": 6}
 
 
@@ -56,24 +79,46 @@ def node_ranges(prop):
     return cps
 
 
+def ice_ranges(prop):
+    cps = set()
+    lines = u.oracle_go("icebin", prop)
+    if lines == ["unknown"]:
+        u.fail("the ICU library does not know " + prop)
+    for line in lines:
+        a, b, _ = line.split()
+        cps.update(range(int(a, 16), int(b, 16) + 1))
+    return cps
+
+
 def main():
     u.check_version()
     mask = load()
     node_mask = [0] * (u.MAX_CP + 1)
     for name, prop, bit in BITS:
-        want = node_ranges(prop)
+        got = {cp for cp in range(u.MAX_CP + 1) if mask[cp] & bit}
+        if got != ice_ranges(prop):
+            cp = sorted(got ^ ice_ranges(prop))[0]
+            u.fail("%s differs from ICU at %04X" % (prop, cp))
+        if prop in NO_NODE:
+            want = got
+        else:
+            want = node_ranges(prop)
+            if got != want:
+                cp = sorted(got ^ want)[0]
+                u.fail("%s differs from Node at %04X" % (prop, cp))
         for cp in want:
             node_mask[cp] |= bit
-        got = {cp for cp in range(u.MAX_CP + 1) if mask[cp] & bit}
-        if got != want:
-            cp = sorted(got ^ want)[0]
-            u.fail("%s differs from Node at %04X" % (prop, cp))
 
     runs = u.runs_of(mask, skip=0)
+    offs = [0]
+    for _, p in PROPS:
+        offs.append(offs[-1] + len(p))
     parts = [
         u.array("FLAG_START", [r[0] for r in runs], "The first code point of each run."),
         u.array("FLAG_END", [r[1] for r in runs], "The last code point of each run."),
         u.array("FLAG_MASK", [r[2] for r in runs], "The mask of each run."),
+        u.array("PROP_OFF", offs, "The start of each property name in PROP_NAMES."),
+        u.string("PROP_NAMES", "".join(p for _, p in PROPS)),
     ]
     u.write_goose(os.path.join(u.ROOT, "flags_data.goose"), "make_flags_data.py", parts)
 
