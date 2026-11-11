@@ -73,6 +73,7 @@ fn main() {
     bad += suite::run_char();
     bad += suite::run_script();
     bad += suite::run_coll();
+    bad += suite::run_locale();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

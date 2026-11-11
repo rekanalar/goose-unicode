@@ -35,6 +35,7 @@ import chars;
 import script_data;
 import scripts_more;
 import flags;
+import case_locale;
 import case_full;
 import title;
 import segment_data;

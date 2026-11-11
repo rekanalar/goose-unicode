@@ -11,6 +11,7 @@ unicode-case-mapping = "1.0.0"
 unicode-linebreak = "0.1.5"
 icu_collator = "2"
 icu_locale = "2"
+icu_casemap = "2"
 
 [[bin]]
 name = "width"
@@ -31,6 +32,10 @@ path = "linebreak.rs"
 [[bin]]
 name = "collate"
 path = "collate.rs"
+
+[[bin]]
+name = "casemap"
+path = "casemap.rs"
 
 [profile.release]
 opt-level = 2

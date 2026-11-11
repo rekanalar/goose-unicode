@@ -12,7 +12,7 @@ int32_t u_charMirror_79(int32_t c);
 double u_getNumericValue_79(int32_t c);
 int32_t u_charName_79(int32_t codepoint, int32_t nameChoice, char* buffer, int32_t bufferLength, int32_t* err);
 int32_t u_charDirection_79(int32_t c);
-int32_t u_strToTitle_79(uint16_t* dest, int32_t destCapacity, const uint16_t* src, int32_t srcLength, const uint16_t* localeID, const uint16_t* pivot, int32_t* err);
+int32_t u_strToTitle_79(uint16_t* dest, int32_t destCapacity, const uint16_t* src, int32_t srcLength, void* titleIter, const char* locale, int32_t* err);
 void* ubrk_open_79(int32_t type, const char* locale, const uint16_t* text, int32_t textLength, int32_t* status);
 int32_t ubrk_next_79(void* bi);
 int32_t ubrk_getRuleStatus_79(void* bi);
@@ -492,6 +492,55 @@ func main() {
 			if out != string(r) {
 				fmt.Fprintf(w, "%04X %s\n", r, hexes(out))
 			}
+		}
+	case "icelocale", "golocale":
+		// Arguments: a locale tag and one of upper, lower, title. Each
+		// input line holds the code points of one text in hex, separated
+		// by spaces. The output holds the converted text in the same
+		// form, from the ICU library or from golang.org/x/text.
+		tag, kind := os.Args[2], os.Args[3]
+		loc := C.CString(tag)
+		defer C.free(unsafe.Pointer(loc))
+		var gc cases.Caser
+		switch kind {
+		case "upper":
+			gc = cases.Upper(language.Make(tag))
+		case "lower":
+			gc = cases.Lower(language.Make(tag))
+		default:
+			gc = cases.Title(language.Make(tag))
+		}
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var rs []rune
+			for _, f := range strings.Fields(sc.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				rs = append(rs, v)
+			}
+			if os.Args[1] == "golocale" {
+				fmt.Fprintf(w, "%s\n", hexes(gc.String(string(rs))))
+				continue
+			}
+			src := utf16.Encode(rs)
+			dest := make([]uint16, 4*len(src)+16)
+			var err C.int32_t
+			var n C.int32_t
+			d, sp := (*C.uint16_t)(unsafe.Pointer(&dest[0])), (*C.uint16_t)(unsafe.Pointer(&src[0]))
+			switch kind {
+			case "upper":
+				n = C.u_strToUpper_79(d, C.int32_t(len(dest)), sp, C.int32_t(len(src)), loc, &err)
+			case "lower":
+				n = C.u_strToLower_79(d, C.int32_t(len(dest)), sp, C.int32_t(len(src)), loc, &err)
+			default:
+				n = C.u_strToTitle_79(d, C.int32_t(len(dest)), sp, C.int32_t(len(src)), nil, loc, &err)
+			}
+			if err > 0 {
+				fmt.Fprintf(w, "error %d\n", int(err))
+				continue
+			}
+			fmt.Fprintf(w, "%s\n", hexes(string(utf16.Decode(dest[:int(n)]))))
 		}
 	case "icuprop":
 		// The runs of the value of one ICU integer property, as the long

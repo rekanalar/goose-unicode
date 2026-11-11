@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.20.0";
+import unicode from "rekanalar/goose-unicode@v0.21.0";
 ```
 
 ## API
@@ -57,6 +57,10 @@ import unicode from "rekanalar/goose-unicode@v0.20.0";
 | `nfkc_casefold(out, s)` | writes the NFKC case fold of the text: the match key of a caseless and compatibility-insensitive compare |
 | `to_title(out, s)` | writes the text in title case: the first cased letter of each word in title case, the rest in lower case |
 | `titlecase_cp(out, cp)` | writes the title case mapping of one code point; a code point with no mapping gives itself |
+| `to_upper_locale(out, s, locale)` | writes the upper case of `s` under the rules of the locale |
+| `to_lower_locale(out, s, locale)` | writes the lower case of `s` under the rules of the locale, with the final sigma |
+| `to_title_locale(out, s, locale)` | writes the title case of `s` under the rules of the locale |
+| `locale_of(tag)` | the locale constant of a language tag, such as `tr-TR`; the root locale for any other tag |
 | `category(cp)` | the general category of a code point, as a `CAT_` constant |
 | `category_group(cp)` | the group of the category, as a `GROUP_` constant: letter, mark, number, punctuation, symbol, separator or other |
 | `is_letter_cased(cp)` | true for an upper case, a lower case and a title case letter |
@@ -173,8 +177,8 @@ unicode::fold_case(out, "Straße");   // strasse
 The `to_upper_full` and `to_lower_full` calls use the full mappings. The
 German sharp s gives two letters. The rule of the final sigma holds in
 the lower case. A sigma at the end of a word gives the final sigma. The
-package applies no language specific rule. It gives no Turkish or
-Lithuanian form.
+`LOCALE_ROOT` constant names the root locale. The package applies no
+language rule under it.
 
 ```goose
 var out: u8[>..] = [];
@@ -210,6 +214,46 @@ final sigma after a digit or an uncased letter, and the standard does not.
 
 ICU adds a tailoring of its own. It gives "1st" and splits "ab.cd" into two
 words. The package follows the standard in all these cases.
+
+## Case with a locale
+
+The `LOCALE_TR`, `LOCALE_AZ` and `LOCALE_LT` constants name the language
+rules of the special casing file of the standard. The `to_upper_locale`,
+`to_lower_locale` and `to_title_locale` calls take one of the constants.
+
+A script compares every scalar value with the ICU library, release 79.1, for
+the three locales and the three cases. One difference stays. It is the title
+case of the lone U+0345. There the package follows the character database,
+as `to_title` does. The suite replays 13,311 texts around the rules against ICU.
+Node judges the upper and lower case of the code points that it holds.
+
+Turkish and Azerbaijani map the small i to U+0130, the letter with a dot.
+They map the capital I to the dotless small i. A dot above after a capital I
+joins the letter. So `I` with a dot above gives the small i alone.
+
+```goose
+var out: u8[>..] = [];
+unicode::to_upper_locale(out, "iı", unicode::LOCALE_TR);      // İI
+unicode::to_lower_locale(out, "ISPARTA", unicode::LOCALE_TR); // ısparta
+```
+
+Lithuanian adds the dot above to a small i, small j or U+012E when a mark
+above follows. The upper case removes the dot above after a soft dotted
+letter. U+00CC, U+00CD and U+0128 give the small letter, the dot and the
+accent.
+
+```goose
+var text: u8[>..] = [];
+unicode::utf8_encode(text, 0xCC);   // Ì
+unicode::to_lower_locale(out, text[..], unicode::LOCALE_LT);  // i, dot above, grave
+```
+
+The `locale_of` call reads the language subtag of a language tag. The subtag
+has two or three ASCII letters. It ends at the end of the tag, at a hyphen or
+at an underscore. The call gives `LOCALE_TR` for `tr`, `TR`, `tr-TR`, `tr_TR` and `tur`, and the
+root locale for any other subtag. With `LOCALE_ROOT` each call gives the
+result of the call without a locale. A locale value that is no constant
+gives `ERR_BAD_ARG`.
 
 ## UTF-16
 
@@ -641,9 +685,17 @@ if code == unicode::OK && out[0] == -1 {
   accepts names from users also normalizes the text to NFC. It checks for
   look alike characters too, as UAX #31 and UAX #39 describe. The package
   gives the tests and no check of a whole name.
-- The title case follows the default word rules and no locale. It gives
-  no Turkish dotted I and no Dutch IJ. A caller that needs a language
-  rule maps the first letter itself with `titlecase_cp`.
+- The case mapping holds the language rules of Turkish, Azerbaijani and
+  Lithuanian. The Greek upper case, the Dutch IJ title case and the
+  Armenian ligature U+0587 stay out. The ICU library, release 79.1, the
+  Rust crate `icu_casemap` and Node hold all three.
+- The title case of `I` with a dot above differs from the Rust crate
+  `icu_casemap` under Turkish. The crate keeps the dot. The package and
+  ICU remove it, as the standard says.
+- The Lithuanian lower case orders the marks as ICU does. The dot above
+  comes before a mark of class 230 and before a mark of class 220.
+  Go `x/text` writes a mark of class 220 before the dot. It also adds a
+  second dot after U+0130. The package follows ICU.
 
 - The word and sentence splits follow the default rules and no locale.
   Node `Intl.Segmenter` splits Chinese, Japanese, Thai, Lao, Khmer and

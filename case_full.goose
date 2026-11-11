@@ -27,18 +27,32 @@ fn is_ignorable(cp: i64) -> bool {
 // The full upper case of the text. Returns a fault code and the offset
 // of the first bad byte, or OK and -1.
 fn to_upper_full(out: u8[>..]&, s: const u8[:]) -> i64, i64 {
-    return convert_full(out, s, 0);
+    return convert_full(out, s, 0, LOCALE_ROOT);
+}
+
+// The full upper case of the text under the rules of the locale. A locale
+// value that is no constant gives ERR_BAD_ARG. Returns a fault code and the
+// offset of the first bad byte, or OK and -1.
+fn to_upper_locale(out: u8[>..]&, s: const u8[:], locale: i64) -> i64, i64 {
+    return convert_full(out, s, 0, locale);
 }
 
 // The full lower case of the text. A sigma at the end of a word gives
 // the final sigma.
 fn to_lower_full(out: u8[>..]&, s: const u8[:]) -> i64, i64 {
-    return convert_full(out, s, 1);
+    return convert_full(out, s, 1, LOCALE_ROOT);
+}
+
+// The full lower case of the text under the rules of the locale, with the
+// final sigma. The faults are those of to_upper_locale.
+fn to_lower_locale(out: u8[>..]&, s: const u8[:], locale: i64) -> i64, i64 {
+    return convert_full(out, s, 1, locale);
 }
 
 // kind: 0 upper, 1 lower. Walks the text once and writes the result.
-fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64) -> i64, i64 {
+fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64, locale: i64) -> i64, i64 {
     out.clear();
+    if !locale_ok(locale) { return ERR_BAD_ARG, -1; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
     var i: i64 = 0;
     while i < s.len {
@@ -48,11 +62,12 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64) -> i64, i64 {
             return ERR_BAD_UTF8, i;
         }
         if kind == 0 {
-            if !push_full(out, UFULL_CP[..], UFULL_OFF[..], UFULL_POOL[..], cp) {
+            if !push_upper_rule(out, s, i, cp, locale)
+                && !push_full(out, UFULL_CP[..], UFULL_OFF[..], UFULL_POOL[..], cp) {
                 push_utf8(out, upper_cp(cp));
             }
         } else {
-            push_lower_full(out, s, i, n, cp);
+            push_lower_full(out, s, i, n, cp, locale);
         }
         if out.len > MAX_OUTPUT {
             out.clear();
@@ -64,8 +79,10 @@ fn convert_full(out: u8[>..]&, s: const u8[:], kind: i64) -> i64, i64 {
 }
 
 // Writes the full lower case of the code point at the byte offset i of
-// the text. The capital sigma gives the final sigma at the end of a word.
-fn push_lower_full(out: u8[>..]&, s: const u8[:], i: i64, n: i64, cp: i64) {
+// the text. A rule of the locale comes first. The capital sigma gives the
+// final sigma at the end of a word.
+fn push_lower_full(out: u8[>..]&, s: const u8[:], i: i64, n: i64, cp: i64, locale: i64) {
+    if push_lower_rule(out, s, i, n, cp, locale) { return; }
     if cp == SIGMA_CP[0] {
         if sigma_is_final(s, i, n) {
             push_utf8(out, SIGMA_FINAL[0]);
