@@ -29,7 +29,7 @@ The tables hold Unicode 17.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.17.0";
+import unicode from "rekanalar/goose-unicode@v0.18.0";
 ```
 
 ## API
@@ -82,6 +82,8 @@ import unicode from "rekanalar/goose-unicode@v0.17.0";
 | `is_emoji(cp)`, `is_emoji_presentation(cp)`, `is_emoji_modifier(cp)`, `is_emoji_modifier_base(cp)`, `is_emoji_component(cp)`, `is_extended_pictographic(cp)` | the emoji properties of the standard |
 | `is_zwj(cp)`, `is_emoji_presentation_selector(cp)`, `is_text_presentation_selector(cp)`, `is_regional_indicator(cp)`, `is_tag_character(cp)` | the code points that build emoji sequences |
 | `is_id_start(cp)`, `is_id_continue(cp)`, `is_xid_start(cp)`, `is_xid_continue(cp)` | the identifier properties of the standard |
+| `skeleton(out, s)` | writes the skeleton of the text: the key of the confusable table of the standard |
+| `confusable(a, b)` | true when the two texts have the same skeleton, so a person reads them the same |
 | `has_property(cp, prop)` | true when the code point holds the binary property; `prop` is a `PROP_` constant such as `PROP_WHITE_SPACE` |
 | `property_name(prop)`, `property_by_name(name)` | the name of a binary property, such as `White_Space`, and the constant of a name; -1 when there is none |
 | `mirrored(cp)` | true when the code point is mirrored |
@@ -384,6 +386,33 @@ Then each code point folds. Then the default ignorables drop out.
 One composition runs over the whole text. It runs last, because
 folded characters interact.
 
+## Look alike identifiers
+
+The `skeleton` call gives the key of a text under the confusable table
+of the standard. The text takes the canonical form first. The default
+ignorables drop out. Every code point maps through the table. The
+canonical form runs once more over the result. The skeleton keeps the
+case, so `a` and `A` differ.
+
+The `confusable` call gives true when two texts have the same
+skeleton. A Cyrillic `a` next to a Latin `bc` reads like `abc`. An `m`
+reads like `rn`. A caller that accepts identifiers from users can
+compare the skeletons, and refuse a name that imitates another.
+
+```goose
+print(unicode::confusable("\u0430bc", "abc"));   // true
+```
+
+Only the ICU library holds these calls. Python, Node, Go and the Rust
+crates hold none. The table comes from the security data of the
+standard.
+
+The ICU 78 library ships an older revision of the table. The package
+uses the current revision, so the two differ on 1,526 of the 6,712
+rows. Every other row gives the same skeleton. The script
+`make_confusable_data.py` counts the difference and writes both
+skeletons into the suite.
+
 ## Grapheme clusters
 
 The package splits text by the rules of the Unicode text segmentation
@@ -625,6 +654,10 @@ if code == unicode::OK && out[0] == -1 {
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
 - The package reads UTF-8, UTF-16 and UTF-32.
+- The confusable calls give the skeleton and the test of UAX #39. The
+  restriction levels, the identifier status checks and the mixed
+  script detection of the same report stay out. Only ICU holds the
+  calls, and ICU ships an older revision of the table.
 - Only the ICU library holds the NFKC case fold as one call
   (`unorm2_getNFKCCasefoldInstance`). Python `str.casefold`, Node,
   Go and the Rust crates hold no such call. The package holds it
@@ -754,6 +787,10 @@ beyond the reference libraries.
   marks with a counting sort. A hostile run of marks cannot take
   quadratic time. A result above `MAX_OUTPUT` gives `ERR_TOO_LONG`
   and writes nothing.
+- The skeleton walk takes the longest match at each position, so the
+  time stays linear in the bytes. A hostile text of the letter m grows
+  the result, and the bound gives `ERR_TOO_LONG` and writes nothing.
+  A bad byte gives `ERR_BAD_UTF8` and its offset.
 - The `property_by_name` call stops a query above 28 bytes before any
   compare. The longest name holds 28 bytes. A search makes at most 53
   compares of the length of the query. A hostile query cannot take more
@@ -790,6 +827,7 @@ goose run examples/linebreak.goose
 goose run examples/collate.goose
 goose run examples/properties.goose
 goose run examples/casefold.goose
+goose run examples/confusable.goose
 goose run examples/lookup.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
@@ -844,6 +882,7 @@ python3 make_coll_data.py
 python3 diff_coll.py
 python3 diff_props.py
 python3 make_casefold_data.py
+python3 make_confusable_data.py
 ```
 
 The collation script reads the root collation table and the conformance

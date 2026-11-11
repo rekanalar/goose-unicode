@@ -16,6 +16,8 @@ import props_name_cases;
 import props_num_cases;
 import case_full_cases;
 import cf_cases;
+import confusable_cases;
+import confusable_suite;
 import utf8_suite;
 import normalize_suite;
 import case_suite;

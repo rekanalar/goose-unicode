@@ -54,6 +54,7 @@ fn main() {
     bad += suite::run_utf8();
     bad += suite::run_normalize();
     bad += suite::run_case();
+    bad += suite::run_confusable();
     bad += suite::run_property();
     bad += suite::run_grapheme();
     bad += suite::run_segment();

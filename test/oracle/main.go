@@ -28,6 +28,10 @@ void u_charAge_78(int32_t c, uint8_t* versionArray);
 typedef struct UNormalizer2 UNormalizer2;
 const UNormalizer2* unorm2_getNFKCCasefoldInstance_78(int32_t* err);
 int32_t unorm2_normalize_78(const UNormalizer2* n2, const uint16_t* src, int32_t len, uint16_t* dest, int32_t cap, int32_t* err);
+typedef void USpoofChecker;
+USpoofChecker* uspoof_open_78(int32_t* err);
+int32_t uspoof_getSkeleton_78(const USpoofChecker* sc, uint32_t type, const uint16_t* id, int32_t len, uint16_t* dest, int32_t cap, int32_t* err);
+void uspoof_close_78(USpoofChecker* sc);
 int32_t u_getPropertyEnum_78(const char* alias);
 int8_t u_hasBinaryProperty_78(int32_t c, int32_t which);
 void* ucol_open_78(const char* loc, int32_t* err);
@@ -523,6 +527,44 @@ func main() {
 			}
 			return "N"
 		}, func(v string) bool { return v == "N" }, true)
+	case "iceskel":
+		// Each input line holds the code points of one text in hex.
+		// The output holds the code points of the skeleton of the text
+		// from the ICU 78 library.
+		var st C.int32_t
+		sc := C.uspoof_open_78(&st)
+		if st != 0 {
+			fmt.Fprintln(w, "open error")
+			break
+		}
+		defer C.uspoof_close_78(sc)
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for lines.Scan() {
+			var units []uint16
+			for _, f := range strings.Fields(lines.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				for _, u := range utf16.Encode([]rune{v}) {
+					units = append(units, u)
+				}
+			}
+			dest := make([]uint16, 4*len(units)+64)
+			err := C.int32_t(0)
+			n := C.uspoof_getSkeleton_78(sc, 0, (*C.uint16_t)(unsafe.Pointer(&units[0])),
+				C.int32_t(len(units)), (*C.uint16_t)(unsafe.Pointer(&dest[0])),
+				C.int32_t(len(dest)), &err)
+			if err != 0 {
+				fmt.Fprintln(w, "error")
+				continue
+			}
+			out := make([]rune, 0, n)
+			for i := 0; i < int(n); i++ {
+				out = append(out, rune(dest[i]))
+			}
+			fmt.Fprintln(w, hexes(string(out)))
+		}
 	case "icefold":
 		// Each input line holds the code points of one text in hex.
 		// The output holds the code points of the NFKC case fold of

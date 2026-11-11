@@ -48,6 +48,8 @@ import bidi;
 import linebreak;
 import coll_data;
 import collate;
+import confusable_data;
+import confusable;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "17.0.0";
