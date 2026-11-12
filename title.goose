@@ -108,9 +108,15 @@ fn to_title_locale(out: u8[>..]&, s: const u8[:], locale: i64) -> i64, i64 {
     out.clear();
     if !locale_ok(locale) { return ERR_BAD_ARG, -1; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
+    var br: i64[>..] = [];
+    let bcode = word_all_breaks(br, s);
+    if bcode != OK { return bcode, -1; }
     var at: i64 = 0;
+    var k: i64 = 0;
     while at < s.len {
-        let code, end = word_next(s, at);
+        var end = s.len;
+        if k < br.len { end = br[k]; }
+        k += 1;
         var seen = false;
         var i = at;
         while i < end {

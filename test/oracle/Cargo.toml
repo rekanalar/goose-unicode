@@ -12,6 +12,7 @@ unicode-linebreak = "0.1.5"
 icu_collator = "2"
 icu_locale = "2"
 icu_casemap = "2"
+icu_segmenter = "2"
 
 [[bin]]
 name = "width"
@@ -39,3 +40,7 @@ path = "casemap.rs"
 
 [profile.release]
 opt-level = 2
+
+[[bin]]
+name = "wordseg"
+path = "wordseg.rs"

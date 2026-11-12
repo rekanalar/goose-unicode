@@ -55,6 +55,14 @@ import confusable_data;
 import confusable;
 import enum_data;
 import enumprop;
+import dict_data_thai;
+import dict_data_lao;
+import dict_data_burmese;
+import dict_data_khmer;
+import dict_data_cj;
+import dict_match;
+import dict_engine;
+import dict_cj;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "18.0.0";
@@ -146,6 +154,7 @@ const WB_MIDNUM: i64 = 15;
 const WB_NUMERIC: i64 = 16;
 const WB_EXTENDNUMLET: i64 = 17;
 const WB_WSEGSPACE: i64 = 18;
+const WB_CJ: i64 = 19;      // Han or Hiragana: a word of the CJK dictionary
 
 // ---- sentence break classes ---------------------------------------------
 const SB_CR: i64 = 1;

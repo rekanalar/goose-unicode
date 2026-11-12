@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.22.0";
+import unicode from "rekanalar/goose-unicode@v0.23.0";
 ```
 
 ## API
@@ -551,6 +551,34 @@ A malformed byte forms a segment of its own. The time of every call is
 linear in the text. A call reads ahead past the marks that join to one
 code point only. A sentence read stops at the next terminator.
 
+### Words of Thai, Lao, Khmer, Burmese, Chinese and Japanese
+
+These scripts write no spaces between the words. The word calls split a
+run of such text with the word lists of ICU 79.1. The ICU word break
+iterator does the same. The five lists are Thai, Lao, Khmer, Burmese and
+the list of Chinese and Japanese. They sit in the `dict_data_*.goose`
+files of the package, 36 MB of source in all.
+
+```goose
+let code, end = unicode::word_next("ภาษาไทย", 0);
+print(end);   // 12: the first word is ภาษา
+```
+
+The rules of the standard run first. A letter of these scripts joins to
+the letters around it, so "aภาษา" is one segment. The word list then
+splits each run of the scripts inside that segment. A run of Han,
+Hiragana and Katakana goes through a split of least cost, as in ICU. A
+run of Katakana that no word holds stays one segment.
+
+The calls read the whole run to split it. `word_next` on a position
+inside a run gives the first break above it in the split of the run. A
+call at a position outside a run restarts the rules there. A walk that
+starts inside a segment can then differ from a walk from the start.
+
+A loop of `word_next` calls over one long run takes time in the square
+of the run length. Each call splits the whole run again. Use
+`word_offsets` or `word_count` for a long text. They split each run once.
+
 ## Line breaking
 
 The `line_breaks` call gives the places where a line may end. It uses
@@ -740,11 +768,32 @@ if code == unicode::OK && out[0] == -1 {
   second dot after U+0130. The package follows ICU.
 
 - The word and sentence splits follow the default rules and no locale.
-  Node `Intl.Segmenter` splits Chinese, Japanese, Thai, Lao, Khmer and
-  Burmese with a dictionary, so it gives other words there. The default
-  rules split every Han ideograph. They give no boundary inside a Thai
-  run. Rust `unicode-segmentation` follows the default rules, as this
-  package does. Python has no such call in the standard library.
+  Thai, Lao, Khmer, Burmese, Chinese and Japanese text goes through the
+  word lists of ICU 79.1. Before this release a Thai run was one
+  segment and each Han ideograph was a segment. They now split at the
+  words of the lists.
+- The package gives the splits of ICU and of Node 22 `Intl.Segmenter`
+  on each of 12,100 texts of these scripts. Rust `icu_segmenter` 2.4.0
+  differs from ICU on 4,449 of the first 11,300 of them with
+  `WordSegmenter::new_dictionary`. It differs on 7,063 with `new_auto`,
+  which uses a neural model for Burmese. The cause of the differences
+  is not investigated. The package follows ICU.
+- Rust `unicode-segmentation` follows the default rules and gives no
+  split inside a Thai run. Python has no such call in the standard
+  library.
+- A word list holds the words of one release of ICU. A word that the
+  lists miss stays inside the split of its neighbours. The lists give
+  no split for a name or a new word. The data files make the package
+  36 MB larger in source. A program that imports it holds the lists in memory.
+- ICU can use LSTM models for Thai and Burmese instead of the word
+  lists. The package holds no LSTM model. The ICU build that served as
+  the oracle holds no LSTM data. It uses the word lists, as the package
+  does. A build with LSTM data can split Thai and Burmese differently.
+- The `is_word_like` flag differs from the status of ICU for letters
+  above the basic plane. ICU gives the status 0 to a lone segment of
+  19,330 such letters. Examples are the compatibility ideographs
+  U+2F800 to U+2F8FF, U+20000 and the Linear B letters. The call gives
+  true for them. The cause is not investigated.
 - The sentence split holds no list of abbreviations. It splits "Mr. Smith"
   after "Mr.".
 - The `is_word_like` call gives false for a text above `MAX_INPUT` and for
@@ -960,6 +1009,21 @@ beyond the reference libraries.
 - The Greek walk checks the length of its input and clears its buffer. A
   caller that reaches it directly gets the same bound as the public calls.
 
+- The dictionary split reads each run of one script once. The walk of
+  Thai, Lao, Khmer and Burmese looks ahead three words. The test suite
+  splits 1 MiB of one Thai letter in about one second. It splits 1 MiB
+  of one Han ideograph in about one second too. The package checks no
+  other hostile shape, such as a text built from long chains of
+  dictionary words. `word_offsets` splits 32,000 repeats of a seven
+  letter Thai text in 246 ms.
+- A loop of `word_next` calls over one run of Thai words is not
+  linear. 28,000 letters and 8,000 calls took 294 s on this machine.
+  The risk stays. A caller with text from an unknown source must use
+  `word_offsets`. Or it must bound the length of the text it walks.
+- A bad byte forms a segment of one byte and takes no part in a run.
+  The split of a run of Han, Hiragana and Katakana normalizes a copy of
+  the run. The offsets that the call gives stay offsets of the input.
+
 These risks stay.
 
 - The package does not sanitize the text. It gives the category of a code
@@ -981,6 +1045,7 @@ goose run examples/grapheme.goose
 goose run examples/case.goose
 goose run examples/props.goose
 goose run examples/words.goose
+goose run examples/dictwords.goose
 goose run examples/utf16.goose
 goose run examples/utf32.goose
 goose run examples/width.goose

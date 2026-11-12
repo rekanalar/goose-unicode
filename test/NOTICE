@@ -61,3 +61,12 @@ The crate is under the MIT license and the Apache License 2.0. The
 script test/make_width_data.py reads the crate through the oracle in
 test/oracle and writes numbers only. No source code of the crate is in
 this package.
+
+The five word lists of the dictionary word segmentation come from the
+ICU library, release 79.1, source tree
+icu4c/source/data/brkitr/dictionaries: thaidict.txt, khmerdict.txt,
+laodict.txt, burmesedict.txt and cjdict.txt. The lists carry the
+Unicode License and the licenses of their original word list sources,
+which the headers of the files name. The script test/make_dict_data.py
+reads the lists and writes trie numbers only into the package. No word
+list file itself is in this package.

@@ -25,7 +25,7 @@ fn grapheme_break_name(cp: i64) -> const u8[:] {
 // The word break of a code point.
 fn word_break(cp: i64) -> i64 {
     if cp < 0 || cp > 0x10FFFF { return ENUM_WB_DEFAULT[0]; }
-    return ENUM_WB_MAP[word_props(cp) & 31];
+    return ENUM_WB_MAP[word_props_raw(cp) & 31];
 }
 
 // The short name of the word break of a code point.

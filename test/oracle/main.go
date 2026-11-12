@@ -616,6 +616,20 @@ func main() {
 			v := C.u_getIntPropertyValue_79(C.int32_t(r), 0x1005)
 			return C.GoString(C.u_getPropertyValueName_79(0x1005, v, 0))
 		}, func(v string) bool { return false }, true)
+	case "icuwb":
+		// The word break class of the ICU library, one code point per
+		// line, with the name of the class.
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			v := C.u_getIntPropertyValue_79(C.int32_t(r), 0x1014)
+			fmt.Fprintf(w, "%04X %s\n", r, C.GoString(C.u_getPropertyValueName_79(0x1014, v, 0)))
+		}
+	case "iculb":
+		// The line break class of the ICU library, one code point per
+		// line, with the name of the class.
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			v := C.u_getIntPropertyValue_79(C.int32_t(r), 0x1008)
+			fmt.Fprintf(w, "%04X %s\n", r, C.GoString(C.u_getPropertyValueName_79(0x1008, v, 0)))
+		}
 	case "icucase":
 		// The simple case mappings of the ICU library. The mode names
 		// upper or lower. Each line holds a code point and its mapping.

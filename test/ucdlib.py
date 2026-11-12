@@ -102,6 +102,22 @@ def array(name, values, comment=None):
     return "\n".join(out)
 
 
+def bytes_array(name, data, comment=None):
+    """A byte string of the data, as an escaped literal.
+
+    The compiler reads a string of bytes far faster than it reads a list
+    of numbers, so the big tables of the package hold bytes.
+    """
+    out = []
+    if comment:
+        out.append("// " + comment)
+    # One line: the compiler is slow on a literal that spans lines.
+    body = "".join("\\x%02x" % b for b in data)
+    out.append("const %s: u8[%d] = \"%s\";" % (name, len(data), body))
+    out.append("")
+    return "\n".join(out)
+
+
 def write_goose(path, script, parts, namespace="unicode"):
     header = HEADER.format(version=VERSION, script=script)
     if namespace != "unicode":
