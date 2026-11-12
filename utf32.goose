@@ -86,3 +86,46 @@ fn utf32_encode(out: u8[>..]&, cps: const i64[:], big_endian: bool) -> i64 {
     }
     return OK;
 }
+
+// Decodes the UTF-32 bytes of s and writes U+FFFD for each bad part. A
+// surrogate and a value above U+10FFFF each give one U+FFFD. A tail of
+// one to three bytes gives one U+FFFD. out is cleared first. The call
+// returns OK and the number of U+FFFD that it wrote. A text above
+// MAX_INPUT bytes gives ERR_TOO_LONG and 0.
+fn utf32_decode_lossy(out: i64[>..]&, s: const u8[:], big_endian: bool) -> i64, i64 {
+    out.clear();
+    if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
+    var i: i64 = 0;
+    var bad: i64 = 0;
+    while i < s.len {
+        if i + 4 > s.len { out.push(0xFFFD); bad += 1; break; }
+        let u = utf32_unit(s, i, big_endian);
+        if scalar_ok(u) {
+            out.push(u);
+        } else {
+            out.push(0xFFFD);
+            bad += 1;
+        }
+        i += 4;
+    }
+    return OK, bad;
+}
+
+// Decodes UTF-32 bytes and reads the byte order from a leading mark.
+// 00 00 FE FF means big endian and FF FE 00 00 means little endian. The
+// mark does not reach out. Bytes with no mark use default_big_endian. The
+// fault offset counts from the first byte of s, the mark included.
+fn utf32_decode_auto(out: i64[>..]&, s: const u8[:], default_big_endian: bool) -> i64, i64 {
+    var be = default_big_endian;
+    var skip: i64 = 0;
+    if s.len >= 4 && s[0] == 0x00 && s[1] == 0x00 && s[2] == 0xFE && s[3] == 0xFF {
+        be = true;
+        skip = 4;
+    } else if s.len >= 4 && s[0] == 0xFF && s[1] == 0xFE && s[2] == 0x00 && s[3] == 0x00 {
+        be = false;
+        skip = 4;
+    }
+    let code, off = utf32_decode(out, s[skip..s.len], be);
+    if off >= 0 { return code, off + skip; }
+    return code, off;
+}

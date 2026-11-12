@@ -23,6 +23,7 @@ import table;
 import utf8;
 import utf16;
 import utf32;
+import bom;
 import norm;
 import casing;
 import property;

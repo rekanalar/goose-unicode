@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.24.0";
+import unicode from "rekanalar/goose-unicode@v0.25.0";
 ```
 
 ## API
@@ -46,6 +46,13 @@ import unicode from "rekanalar/goose-unicode@v0.24.0";
 | `utf16_is_surrogate(cp)` | true when the code point is in the range U+D800 to U+DFFF |
 | `utf32_decode(out, s, big_endian)` | reads the UTF-32 bytes of the text and writes the code points into the buffer of the caller; gives the code and the offset of the first bad byte |
 | `utf32_encode(out, cps, big_endian)` | writes the UTF-32 bytes of the code points into the buffer of the caller |
+| `utf8_decode_lossy(out, s)` | decodes the text and writes U+FFFD for each maximal bad part; gives a fault code and the number of replacements |
+| `utf16_decode_lossy(out, s, big_endian)` | the same for UTF-16: a lone surrogate and a final odd byte each give one U+FFFD |
+| `utf32_decode_lossy(out, s, big_endian)` | the same for UTF-32: a value that is no scalar gives one U+FFFD, and a tail of one to three bytes gives one |
+| `bom_detect(s)` | the kind of the byte order mark at the start of the text, as a `BOM_` constant, and the length of the mark |
+| `utf8_strip_bom(out, s)` | copies the text without a leading UTF-8 mark |
+| `utf16_decode_auto(out, s, default_big_endian)` | decodes UTF-16 and reads the byte order from a leading mark; the mark does not reach the output |
+| `utf32_decode_auto(out, s, default_big_endian)` | the same for UTF-32 |
 | `utf32_rune_len(cp)` | 1 for a code point that UTF-32 can hold, 0 for the rest |
 | `normalize(out, form, s)` | writes the text in the given form into the buffer of the caller |
 | `is_normalized(form, s)` | true when the text is already in the given form |
@@ -102,6 +109,7 @@ import unicode from "rekanalar/goose-unicode@v0.24.0";
 | `bidi_bracket_type(cp)` | the paired bracket type: `BRACKET_NONE`, `BRACKET_OPEN` or `BRACKET_CLOSE` |
 | `bidi_paired_bracket(cp)` | the partner of a bracket; a code point that is no bracket gives itself |
 | `lookup(name)` | the code point of a name or a formal alias of the Character Database; -1 when there is none |
+| `lookup_checked(name)` | the same, with a fault code: `ERR_TOO_LONG` above 128 bytes and `ERR_BAD_UTF8` for a bad byte |
 | `name(cp)` | the name of a code point in the Character Database; no name gives the empty slice |
 | `grapheme_count(s)` | the number of clusters that a user sees in the text |
 | `grapheme_next(s, at)` | the end of the cluster that starts at the byte offset; gives the code and the end |
@@ -109,7 +117,9 @@ import unicode from "rekanalar/goose-unicode@v0.24.0";
 | `word_next(s, at)` | the end of the word segment that starts at the byte offset; gives the code and the end |
 | `word_count(s)` | the number of word segments, the spaces and the punctuation too |
 | `word_offsets(out, s)` | copies the start offset of every word segment into the buffer of the caller |
+| `word_next_cached(cache, s, at)` | the end of the word segment at the byte offset, for a walk of many calls over one text; each rule segment is read once |
 | `is_word_like(s, start, end)` | true when the segment holds a letter, a number or an ideograph |
+| `is_word_like_checked(s, start, end)` | the same, with a fault code: `ERR_BAD_ARG` for a bad range and `ERR_TOO_LONG` above `MAX_INPUT` |
 | `sentence_next(s, at)` | the end of the sentence that starts at the byte offset; gives the code and the end |
 | `sentence_count(s)` | the number of sentences in the text |
 | `line_break_class(cp)` | the `Line_Break` class of a code point, as an `LB_` constant, before rule LB1 resolves it |
@@ -299,8 +309,8 @@ The Go library writes U+FFFD for a lone surrogate, so the two answers
 differ there. The Node library writes U+FFFD as well, unless the
 decoder runs in the fatal mode. The Rust library refuses the text.
 
-The package does not read the byte order mark. A caller that reads a
-file with a mark removes the first two bytes itself.
+`utf16_decode_auto` reads the byte order from a leading mark. See
+"Byte order marks" and "Lossy decode" below.
 
 ```goose
 var cps: i64[>..] = [];
@@ -326,8 +336,8 @@ The strict codecs of Python refuse a surrogate too. A plain slice of
 `u32` in Rust holds no rule at all. Go holds no UTF-32 library and Node
 rejects UTF-32, so the vectors of the test suite come from Python only.
 
-The package does not read the byte order mark. A caller that reads a
-file with a mark removes the first four bytes itself.
+`utf32_decode_auto` reads the byte order from a leading mark. See
+"Byte order marks" and "Lossy decode" below.
 
 ```goose
 var cps: i64[>..] = [];
@@ -336,6 +346,45 @@ var out: u8[>..] = [];
 unicode::utf32_encode(out, cps[..], false);
 print(out);   // H i and two zero bytes
 ```
+
+## Lossy decode
+
+A program that shows text from an unknown source can repair the text.
+The three lossy calls write U+FFFD for each bad part and decode the rest.
+Each call gives a fault code and the number of U+FFFD that it wrote. A
+real U+FFFD in the input does not count.
+
+A bad part of UTF-8 is the longest start of a sequence that the standard
+accepts. So `E0 80 80` gives three U+FFFD, `F0 9F` gives one, and
+`41 80 42` gives `41 FFFD 42`. This is the rule of the WHATWG decoder.
+
+ICU 79.1, Rust `String::from_utf8_lossy` and Python
+`bytes.decode('utf-8', 'replace')` give the same code points on all
+21,671 test strings.
+
+A high surrogate of UTF-16 before any other unit
+gives one U+FFFD, and the call reads that unit again. A final odd byte
+gives one U+FFFD. A UTF-32 value that is no scalar gives one U+FFFD. A
+tail of one to three bytes gives one. ICU and Python agree on the 7,470
+UTF-16 and 7,650 UTF-32 strings of each byte order.
+
+The lossy calls never fault on a bad byte. A text above `MAX_INPUT` is a
+fault, and the buffer stays empty.
+
+## Byte order marks
+
+`bom_detect` names the mark at the start of a text and gives its length.
+The kinds are `BOM_NONE`, `BOM_UTF8`, `BOM_UTF16LE`, `BOM_UTF16BE`,
+`BOM_UTF32LE` and `BOM_UTF32BE`. The call tests the UTF-32 marks first.
+So `FF FE 00 00` is the UTF-32 little endian mark, as ICU
+`ucnv_detectUnicodeSignature` reports it. WHATWG BOM sniffing, Python and
+Go read those bytes as the UTF-16 little endian mark and a null.
+
+`utf16_decode_auto` and `utf32_decode_auto` read the mark of their own
+width only. `utf16_decode_auto` on `FF FE 00 00` gives the code point 0,
+as Python `utf-16` does. Bytes with no mark use the byte order that the
+caller passes. One mark is dropped. A second mark stays as U+FEFF. A fault
+offset counts from the first byte of the input, the mark included.
 
 ## Properties
 
@@ -576,8 +625,16 @@ call at a position outside a run restarts the rules there. A walk that
 starts inside a segment can then differ from a walk from the start.
 
 A loop of `word_next` calls over one long run takes time in the square
-of the run length. Each call splits the whole run again. Use
-`word_offsets` or `word_count` for a long text. They split each run once.
+of the run length. Each call splits the whole run again. A run of 4,000
+code points took 6.1 seconds and a run of 16,000 took 96.7 seconds.
+Use `word_offsets` or `word_count` for a long text. They split each run
+once.
+
+A caller that needs one segment at a time uses `word_next_cached`. It
+keeps the breaks of the rule segment in a buffer of the caller. A walk
+of 16,000 code points then takes 21 milliseconds. Use one buffer for one
+text. A buffer that holds another text of the same length gives wrong
+ends.
 
 ## Line breaking
 
@@ -813,7 +870,8 @@ if code == unicode::OK && out[0] == -1 {
 - The sentence split holds no list of abbreviations. It splits "Mr. Smith"
   after "Mr.".
 - The `is_word_like` call gives false for a text above `MAX_INPUT` and for
-  a bad range. It has no fault code.
+  a bad range. It has no fault code. `is_word_like_checked` gives the
+  fault code. An empty range gives `OK` and false there.
 - The `is_word_like` flag follows the content of the segment. ICU takes
   the flag of Node from the last rule that built the segment. Node can
   differ for a segment that joins an apostrophe, a colon or a connector
@@ -827,7 +885,7 @@ if code == unicode::OK && out[0] == -1 {
   `unicodedata.lookup` gives a text of several code points for a sequence.
   Rust `unicode_names2` and ICU give no sequence. The ICU function knows
   the names and the corrections only, and no other alias. A query above
-  128 bytes gives -1, and the call has no fault code.
+  128 bytes gives -1. `lookup_checked` gives a fault code instead.
 - A block name keeps the spelling of the file of the standard. A code
   point in no block gives `No_Block`, and the block range calls give -1. The
   numbers of the scripts follow the order of the names in the file. A
@@ -856,7 +914,8 @@ if code == unicode::OK && out[0] == -1 {
   `bidi_order`. The rules L3 and L4 depend on the renderer, and the
   package leaves them out. So do the combining marks and the mirrored
   glyphs. The `mirrored` call gives the mirror flag of a code point.
-- The package reads UTF-8, UTF-16 and UTF-32.
+- The package reads UTF-8, UTF-16 and UTF-32. It reads the byte order
+  mark of UTF-8, UTF-16 and UTF-32. It reads no other encoding.
 - The numbers of the seven enumerated properties follow the alias file, not
   the numbers of ICU. A later release can add a value and move a number.
   Compare the name to stay safe. The package has no constant for each value
@@ -963,7 +1022,10 @@ beyond the reference libraries.
   marks. A hostile run of marks cannot take quadratic time. The insertion
   sort of the smaller runs keeps the order of equal classes.
 - The decoder rejects overlong forms, surrogates, truncated sequences and
-  values above U+10FFFF.
+  values above U+10FFFF. The lossy calls never pass such a form to the
+  caller. They write U+FFFD and no surrogate or value above U+10FFFF.
+  Each lossy call reads each byte once, and its result holds at most one
+  code point for each byte.
 - The bidirectional algorithm reads the text a bounded number of times.
   The matching isolates hold a bounded number of entries. So do the
   first strong letter of each isolate, the bracket stack and the level

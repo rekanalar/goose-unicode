@@ -52,3 +52,12 @@ fn lookup(q: const u8[:]) -> i64 {
     }
     return -1;
 }
+
+// The same lookup as lookup, with a fault code. A query above MAX_NAME
+// bytes gives ERR_TOO_LONG. A query that is not UTF-8 gives ERR_BAD_UTF8.
+// A name that no code point holds gives OK and -1.
+fn lookup_checked(q: const u8[:]) -> i64, i64 {
+    if q.len > MAX_NAME { return ERR_TOO_LONG, -1; }
+    if !utf8_valid(q) { return ERR_BAD_UTF8, -1; }
+    return OK, lookup(q);
+}

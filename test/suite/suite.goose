@@ -58,3 +58,5 @@ import dict_cases;
 import dict_suite;
 import line_dict_cases;
 import line_dict_suite;
+import lossy_cases;
+import lossy_suite;

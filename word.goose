@@ -385,3 +385,48 @@ fn is_word_like(s: const u8[:], start: i64, end: i64) -> bool {
     }
     return connectors >= 2;
 }
+
+// The same test as is_word_like, with a fault code. A range outside the
+// text, a negative start or a start above the end gives ERR_BAD_ARG. An
+// empty range gives OK and false. A text above MAX_INPUT gives
+// ERR_TOO_LONG. The second result is the flag.
+fn is_word_like_checked(s: const u8[:], start: i64, end: i64) -> i64, bool {
+    if s.len > MAX_INPUT { return ERR_TOO_LONG, false; }
+    if start < 0 || end > s.len || start > end { return ERR_BAD_ARG, false; }
+    return OK, is_word_like(s, start, end);
+}
+
+// The end of the segment that starts at byte at, for a caller that walks a
+// text from the start with many calls. cache is the buffer of the caller.
+// It holds the breaks of the rule segment that the last call read, so a
+// walk reads each rule segment once and takes linear time. The call gives
+// the same ends as word_next for a walk that starts at 0 and continues at
+// each end. Use one cache for one text. A cache that holds another text
+// of the same length gives wrong ends. Pass an empty cache to start. The
+// result is a fault code and the end, as for word_next. A fault leaves
+// the cache as it is.
+fn word_next_cached(cache: i64[>..]&, s: const u8[:], at: i64) -> i64, i64 {
+    if s.len > MAX_INPUT { return ERR_TOO_LONG, at; }
+    if at < 0 || at >= s.len { return ERR_BAD_ARG, at; }
+    // The cache holds the length of the text, the start and the end of the
+    // rule segment, and then the engine breaks inside the segment.
+    if cache.len < 3 || cache[0] != s.len || at < cache[1] || at >= cache[2] {
+        let end = word_rule_seg(s, at);
+        var br: i64[>..] = [];
+        word_engine_breaks(br, s, at, end);
+        cache.clear();
+        cache.push(s.len);
+        cache.push(at);
+        cache.push(end);
+        for k in 0..br.len { cache.push(br[k]); }
+    }
+    // The first break above at, by binary search. The breaks rise.
+    var lo: i64 = 3;
+    var hi: i64 = cache.len;
+    while lo < hi {
+        let mid = (lo + hi) / 2;
+        if cache[mid] > at { hi = mid; } else { lo = mid + 1; }
+    }
+    if lo < cache.len { return OK, cache[lo]; }
+    return OK, cache[2];
+}

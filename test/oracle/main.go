@@ -47,6 +47,10 @@ void* ucol_open_79(const char* loc, int32_t* err);
 void ucol_close_79(void* col);
 int32_t ucol_strcoll_79(void* col, const uint16_t* a, int32_t alen, const uint16_t* b, int32_t blen);
 int32_t ucol_getSortKey_79(void* col, const uint16_t* src, int32_t len, uint8_t* key, int32_t cap);
+void* ucnv_open_79(const char* name, int32_t* err);
+void ucnv_close_79(void* cnv);
+int32_t ucnv_toUChars_79(void* cnv, uint16_t* dest, int32_t destCap, const char* src, int32_t srcLen, int32_t* err);
+const char* ucnv_detectUnicodeSignature_79(const char* source, int32_t len, int32_t* sigLen, int32_t* err);
 */
 import "C"
 
@@ -612,6 +616,60 @@ func main() {
 			}
 			fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
 			C.ubrk_close_79(bi)
+		}
+	case "icuconv":
+		// The lossy decode of the ICU converter of the given name, such as
+		// UTF-8 or UTF-16LE. Each input line holds hex bytes. The output
+		// holds the code points that ICU writes, with U+FFFD for each
+		// bad part.
+		name := C.CString(os.Args[2])
+		defer C.free(unsafe.Pointer(name))
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<22), 1<<22)
+		for sc.Scan() {
+			var bs []byte
+			for _, f := range strings.Fields(sc.Text()) {
+				var v int
+				fmt.Sscanf(f, "%X", &v)
+				bs = append(bs, byte(v))
+			}
+			bs = append(bs, 0)
+			dest := make([]uint16, len(bs)+8)
+			var err C.int32_t
+			cv := C.ucnv_open_79(name, &err)
+			if cv == nil {
+				fmt.Fprintf(w, "error %d\n", int(err))
+				continue
+			}
+			n := C.ucnv_toUChars_79(cv, (*C.uint16_t)(unsafe.Pointer(&dest[0])), C.int32_t(len(dest)), (*C.char)(unsafe.Pointer(&bs[0])), C.int32_t(len(bs)-1), &err)
+			C.ucnv_close_79(cv)
+			var out []string
+			for _, r := range utf16.Decode(dest[:int(n)]) {
+				out = append(out, fmt.Sprintf("%X", r))
+			}
+			fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
+		}
+	case "icubom":
+		// The converter name and the length of the byte order mark that
+		// ICU detects. Each input line holds hex bytes. The output is the
+		// name and the length, or none and 0.
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		for sc.Scan() {
+			var bs []byte
+			for _, f := range strings.Fields(sc.Text()) {
+				var v int
+				fmt.Sscanf(f, "%X", &v)
+				bs = append(bs, byte(v))
+			}
+			bs = append(bs, 0)
+			var err, sig C.int32_t
+			p := C.ucnv_detectUnicodeSignature_79((*C.char)(unsafe.Pointer(&bs[0])), C.int32_t(len(bs)-1), &sig, &err)
+			if p == nil {
+				fmt.Fprintf(w, "none 0\n")
+			} else {
+				fmt.Fprintf(w, "%s %d\n", C.GoString(p), int(sig))
+			}
 		}
 	case "icuprop":
 		// The runs of the value of one ICU integer property, as the long

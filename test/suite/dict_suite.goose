@@ -75,10 +75,17 @@ fn dc_check(start: i64, c: i64) -> i64 {
     }
     // The sizes and the flags of the walk with the next call.
     var at: i64 = 0;
+    var cache: i64[>..] = [];
     for k in 0..m {
         let code2, end = unicode::word_next(text[..], at);
         if code2 != unicode::OK || end <= at {
             print("FAIL: dict case ", c, " the next call failed at ", k, "\n");
+            bad += 1;
+            break;
+        }
+        let code4, end4 = unicode::word_next_cached(cache, text[..], at);
+        if code4 != unicode::OK || end4 != end {
+            print("FAIL: dict case ", c, " the cached call gave ", end4, " and not ", end, " at ", k, "\n");
             bad += 1;
             break;
         }

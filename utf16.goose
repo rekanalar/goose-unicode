@@ -108,3 +108,60 @@ fn utf16_encode(out: u8[>..]&, cps: const i64[:], big_endian: bool) -> i64 {
     }
     return OK;
 }
+
+// Decodes the UTF-16 bytes of s and writes U+FFFD for each bad part. A
+// lone surrogate and a final odd byte each give one U+FFFD. A high
+// surrogate before any other unit gives U+FFFD, and that unit is read
+// again. out is cleared first. The call returns OK and the number of
+// U+FFFD that it wrote. A text above MAX_INPUT bytes gives ERR_TOO_LONG
+// and 0.
+fn utf16_decode_lossy(out: i64[>..]&, s: const u8[:], big_endian: bool) -> i64, i64 {
+    out.clear();
+    if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
+    var i: i64 = 0;
+    var bad: i64 = 0;
+    while i < s.len {
+        if i + 2 > s.len { out.push(0xFFFD); bad += 1; break; }
+        let u = utf16_unit(s, i, big_endian);
+        if u >= 0xD800 && u <= 0xDBFF {
+            if i + 4 > s.len { out.push(0xFFFD); bad += 1; break; }
+            let v = utf16_unit(s, i + 2, big_endian);
+            if v >= 0xDC00 && v <= 0xDFFF {
+                out.push(0x10000 + ((u - 0xD800) << 10) + (v - 0xDC00));
+                i += 4;
+            } else {
+                out.push(0xFFFD);
+                bad += 1;
+                i += 2;
+            }
+            continue;
+        }
+        if u >= 0xDC00 && u <= 0xDFFF {
+            out.push(0xFFFD);
+            bad += 1;
+        } else {
+            out.push(u);
+        }
+        i += 2;
+    }
+    return OK, bad;
+}
+
+// Decodes UTF-16 bytes and reads the byte order from a leading mark.
+// FE FF means big endian and FF FE means little endian. The mark does not
+// reach out. Bytes with no mark use default_big_endian. The fault offset
+// counts from the first byte of s, the mark included.
+fn utf16_decode_auto(out: i64[>..]&, s: const u8[:], default_big_endian: bool) -> i64, i64 {
+    var be = default_big_endian;
+    var skip: i64 = 0;
+    if s.len >= 2 && s[0] == 0xFE && s[1] == 0xFF {
+        be = true;
+        skip = 2;
+    } else if s.len >= 2 && s[0] == 0xFF && s[1] == 0xFE {
+        be = false;
+        skip = 2;
+    }
+    let code, off = utf16_decode(out, s[skip..s.len], be);
+    if off >= 0 { return code, off + skip; }
+    return code, off;
+}

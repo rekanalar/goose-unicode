@@ -42,6 +42,79 @@ fn decode_at(s: const u8[:], i: i64) -> i64, i64 {
     return cp, need + 1;
 }
 
+// Reads the sequence that starts at byte i for the lossy decode. Returns
+// the code point and the number of bytes. A bad part gives -1 and its
+// length: the lead byte and each byte after it that the standard
+// accepts. The next call starts at the first byte that broke the form.
+// The caller keeps i below the length of s.
+fn decode_lossy_at(s: const u8[:], i: i64) -> i64, i64 {
+    let b0 = s[i] as i64;
+    if b0 < 0x80 { return b0, 1; }
+    if b0 < 0xC2 || b0 > 0xF4 { return -1, 1; }
+    var need: i64 = 1;
+    var lo: i64 = 0x80;
+    var hi: i64 = 0xBF;
+    var cp: i64 = b0 & 0x1F;
+    if b0 >= 0xF0 {
+        need = 3;
+        cp = b0 & 0x07;
+        if b0 == 0xF0 { lo = 0x90; }
+        if b0 == 0xF4 { hi = 0x8F; }
+    } else if b0 >= 0xE0 {
+        need = 2;
+        cp = b0 & 0x0F;
+        if b0 == 0xE0 { lo = 0xA0; }
+        if b0 == 0xED { hi = 0x9F; }
+    }
+    var k: i64 = 1;
+    while k <= need {
+        if i + k >= s.len { return -1, k; }
+        let b = s[i + k] as i64;
+        if k == 1 {
+            if b < lo || b > hi { return -1, k; }
+        } else if b < 0x80 || b > 0xBF {
+            return -1, k;
+        }
+        cp = (cp << 6) | (b & 0x3F);
+        k += 1;
+    }
+    return cp, need + 1;
+}
+
+// Decodes s into code points and writes U+FFFD for each maximal bad part,
+// as the decoder of the WHATWG standard does. out is cleared first. The
+// call returns OK and the number of U+FFFD that it wrote. A text above
+// MAX_INPUT bytes gives ERR_TOO_LONG and 0, and out stays empty.
+fn utf8_decode_lossy(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
+    out.clear();
+    if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
+    var i: i64 = 0;
+    var bad: i64 = 0;
+    while i < s.len {
+        let cp, n = decode_lossy_at(s, i);
+        if cp < 0 {
+            out.push(0xFFFD);
+            bad += 1;
+        } else {
+            out.push(cp);
+        }
+        i += n;
+    }
+    return OK, bad;
+}
+
+// Copies s to out without a leading UTF-8 byte order mark. out is cleared
+// first. A text above MAX_INPUT bytes gives ERR_TOO_LONG and out stays
+// empty. The call does not check that the text is UTF-8.
+fn utf8_strip_bom(out: u8[>..]&, s: const u8[:]) -> i64 {
+    out.clear();
+    if s.len > MAX_INPUT { return ERR_TOO_LONG; }
+    var from: i64 = 0;
+    if s.len >= 3 && s[0] == 0xEF && s[1] == 0xBB && s[2] == 0xBF { from = 3; }
+    for k in from..s.len { out.push(s[k]); }
+    return OK;
+}
+
 // True when the code point is a Unicode scalar value.
 fn scalar_ok(cp: i64) -> bool {
     return cp >= 0 && cp <= 0x10FFFF && !utf16_is_surrogate(cp);
