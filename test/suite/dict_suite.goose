@@ -87,7 +87,7 @@ fn dc_check(start: i64, c: i64) -> i64 {
             bad += 1;
         }
         let want_flag = DICT_POOL[sizes_at + m + k];
-        if want_flag != 2 && unicode::is_word_like(text[..], at, end) != (want_flag == 1) {
+        if unicode::is_word_like(text[..], at, end) != (want_flag == 1) {
             print("FAIL: dict case ", c, " gave a wrong word-like flag at segment ", k, "\n");
             bad += 1;
         }

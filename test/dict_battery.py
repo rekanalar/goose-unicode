@@ -70,10 +70,11 @@ def read_trie(name):
     path = os.path.join(ROOT, "dict_data_%s.goose" % name)
     with open(path, encoding="utf-8") as f:
         text = f.read()
-    m = re.search(r"const DICT_[A-Z]+_NODE: i64\[\d+\] = \[(.*?)\];", text, re.S)
+    m = re.search(r'const DICT_[A-Z]+_NODE: u8\[\d+\] = "(.*?)";', text, re.S)
     if not m:
         u.fail("the trie file %s holds no node array" % path)
-    return [int(v) for v in m.group(1).replace("\n", "").split(",") if v.strip()]
+    data = bytes(int(h, 16) for h in re.findall(r"\\x([0-9a-f]{2})", m.group(1)))
+    return [int.from_bytes(data[i:i + 8], "little") for i in range(0, len(data), 8)]
 
 
 def trie_words(nodes):
@@ -198,9 +199,10 @@ def build_battery(rng, words):
 def icu_splits(texts):
     """The segment sizes and the word-like flags of ICU.
 
-    The size of a segment is in code points. The flag of a segment comes
-    from the rule status of the boundary that ends it: the statuses 100,
-    200 and 400 mark a number, a letter and an ideograph.
+    The size of a segment is in code points. The oracle gives offsets in
+    UTF-16 units, and the code below turns them into code points. The flag
+    of a segment comes from the rule status of the boundary that ends it:
+    the statuses 100, 200 and 400 mark a number, a letter and an ideograph.
     """
     lines = [" ".join("%04X" % c for c in t) for t in texts]
     out = u.oracle_go("icubrk", "root", stdin="\n".join(lines) + "\n")
@@ -213,15 +215,23 @@ def icu_splits(texts):
         for part in line.split():
             off, _, status = part.partition(":")
             offsets.append((int(off), int(status)))
-        if not offsets or offsets[-1][0] != len(t):
+        # The unit offset of the end of each code point.
+        ends = {}
+        unit = 0
+        for k, c in enumerate(t):
+            unit += 2 if c >= 0x10000 else 1
+            ends[unit] = k + 1
+        if not offsets or offsets[-1][0] != unit:
             u.fail("the ICU oracle did not reach the end of %r" % t)
         segs = []
         fs = []
         prev = 0
         for off, status in offsets:
-            segs.append(off - prev)
+            if off not in ends:
+                u.fail("the ICU oracle split inside a code point of %r" % t)
+            segs.append(ends[off] - prev)
             fs.append(1 if status in (100, 200, 400) else 0)
-            prev = off
+            prev = ends[off]
         sizes.append(segs)
         flags.append(fs)
     return sizes, flags
@@ -281,13 +291,7 @@ def main():
         pool += t
         pool.append(len(segs))
         pool += segs
-        # A segment with a code point above the basic plane gets the flag
-        # 2, which the suite does not compare: ICU gives the status 0 to
-        # many such letters and the package does not follow it.
-        at = 0
-        for size, f in zip(segs, fs):
-            pool.append(2 if any(c >= 0x10000 for c in t[at:at + size]) else f)
-            at += size
+        pool += fs
     off.append(len(pool))
     parts = [
         u.array("DICT_OFF", off, "Start of each case in DICT_POOL. One more entry ends the last."),

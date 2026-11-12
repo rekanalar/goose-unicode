@@ -789,11 +789,6 @@ if code == unicode::OK && out[0] == -1 {
   lists. The package holds no LSTM model. The ICU build that served as
   the oracle holds no LSTM data. It uses the word lists, as the package
   does. A build with LSTM data can split Thai and Burmese differently.
-- The `is_word_like` flag differs from the status of ICU for letters
-  above the basic plane. ICU gives the status 0 to a lone segment of
-  19,330 such letters. Examples are the compatibility ideographs
-  U+2F800 to U+2F8FF, U+20000 and the Linear B letters. The call gives
-  true for them. The cause is not investigated.
 - The sentence split holds no list of abbreviations. It splits "Mr. Smith"
   after "Mr.".
 - The `is_word_like` call gives false for a text above `MAX_INPUT` and for

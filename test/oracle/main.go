@@ -449,12 +449,13 @@ func main() {
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
 			fields := strings.Fields(sc.Text())
-			src := make([]uint16, 0, len(fields))
+			rs := make([]rune, 0, len(fields))
 			for _, f := range fields {
 				var v rune
 				fmt.Sscanf(f, "%X", &v)
-				src = append(src, uint16(v))
+				rs = append(rs, v)
 			}
+			src := utf16.Encode(rs)
 			dest := make([]uint16, 4*len(src)+16)
 			var err C.int32_t
 			n := C.u_strToTitle_79((*C.uint16_t)(unsafe.Pointer(&dest[0])),
@@ -546,18 +547,20 @@ func main() {
 		// The word boundaries of one text for one locale. The argument is
 		// the locale. Each input line holds the code points of one text
 		// in hex, separated by spaces. The output holds the offsets of
-		// the boundaries from the ICU library.
+		// the boundaries from the ICU library, in UTF-16 units, each with
+		// the rule status of the segment that it ends.
 		tag := C.CString(os.Args[2])
 		defer C.free(unsafe.Pointer(tag))
 		sc := bufio.NewScanner(os.Stdin)
 		sc.Buffer(make([]byte, 1<<20), 1<<20)
 		for sc.Scan() {
-			var units []uint16
+			var rs []rune
 			for _, f := range strings.Fields(sc.Text()) {
 				var v rune
 				fmt.Sscanf(f, "%X", &v)
-				units = append(units, uint16(v))
+				rs = append(rs, v)
 			}
+			units := utf16.Encode(rs)
 			var err C.int32_t
 			bi := C.ubrk_open_79(1, tag, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
 			if bi == nil {
