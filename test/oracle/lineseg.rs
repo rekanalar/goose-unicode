@@ -1,15 +1,31 @@
 // The line break opportunities of the Rust icu_segmenter crate. Each
 // input line holds the code points of one text in hex. The first
-// argument names the segmenter: auto or dictionary. The output holds
-// the break offsets in code points, the end of the text included.
-use icu_segmenter::options::LineBreakOptions;
+// argument names the strictness: strict, normal, loose or anywhere.
+// The argument dictionary names the dictionary segmenter. The output
+// holds the break offsets in code points, the end of the text included.
+use icu_segmenter::options::{LineBreakOptions, LineBreakStrictness, LineBreakWordOption};
 use icu_segmenter::LineSegmenter;
 use std::io::{self, BufRead};
 
 fn main() {
     let mode = std::env::args().nth(1).unwrap_or_else(|| "auto".to_string());
-    let auto = LineSegmenter::new_auto(LineBreakOptions::default());
-    let dict = LineSegmenter::new_dictionary(LineBreakOptions::default());
+    let strictness = match mode.as_str() {
+        "strict" => LineBreakStrictness::Strict,
+        "normal" => LineBreakStrictness::Normal,
+        "loose" => LineBreakStrictness::Loose,
+        "anywhere" => LineBreakStrictness::Anywhere,
+        _ => LineBreakStrictness::Strict,
+    };
+    let word = match mode.as_str() {
+        "breakall" => LineBreakWordOption::BreakAll,
+        "keepall" => LineBreakWordOption::KeepAll,
+        _ => LineBreakWordOption::Normal,
+    };
+    let mut opts = LineBreakOptions::default();
+    opts.strictness = Some(strictness);
+    opts.word_option = Some(word);
+    let auto = LineSegmenter::new_auto(opts);
+    let dict = LineSegmenter::new_dictionary(opts);
     let stdin = io::stdin();
     for line in stdin.lock().lines() {
         let line = line.unwrap();

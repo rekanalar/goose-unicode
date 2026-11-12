@@ -59,6 +59,18 @@ const LB_XX: i64 = 46;
 const LB_ZW: i64 = 47;
 const LB_ZWJ: i64 = 48;
 
+// The class of the six iteration marks in the loose style. No rule of
+// the standard names that class. The ICU library gives the marks that
+// class in the loose style, where they leave the class NS.
+const LB_NSX: i64 = 49;
+
+// The styles of the line break. The strict style is the style of the
+// standard. The normal and the loose styles follow the tailorings of
+// the ICU library.
+const LINE_STYLE_STRICT: i64 = 0;
+const LINE_STYLE_NORMAL: i64 = 1;
+const LINE_STYLE_LOOSE: i64 = 2;
+
 // The bits of a packed unit: the class in bits 0 to 5, then the flags.
 const LBF_EA: i64 = 64;      // East_Asian_Width is F, W or H
 const LBF_PI: i64 = 128;     // a quotation mark of category Pi
@@ -80,8 +92,16 @@ fn line_break_class(cp: i64) -> i64 {
     return LB_VAL[r] & 63;
 }
 
-// The packed value of one code point after rule LB1.
-fn lb_pack(cp: i64) -> i64 {
+// True for the six iteration marks that leave the class NS in the loose
+// style of the ICU library.
+fn lb_is_nsx(cp: i64) -> bool {
+    return cp == 0x3005 || cp == 0x303B || cp == 0x309D || cp == 0x309E
+        || cp == 0x30FD || cp == 0x30FE;
+}
+
+// The packed value of one code point after rule LB1, for one style. The
+// style decides the class of the code points CJ and of the six marks.
+fn lb_pack_style(cp: i64, style: i64) -> i64 {
     let r = run_at(LB_START[..], LB_END[..], cp);
     var c = LB_XX;
     var v: i64 = 0;
@@ -95,7 +115,16 @@ fn lb_pack(cp: i64) -> i64 {
     else if c == LB_SA {
         if cat == 6 || cat == 7 { c = LB_CM; } else { c = LB_AL; }
     }
-    else if c == LB_CJ { c = LB_NS; }
+    else if c == LB_CJ {
+        // The strict style resolves the class CJ to the class NS. The
+        // normal and the loose styles resolve it to the class ID.
+        if style == LINE_STYLE_STRICT { c = LB_NS; } else { c = LB_ID; }
+    }
+    else if c == LB_NS && style == LINE_STYLE_LOOSE && lb_is_nsx(cp) {
+        // The loose style takes the six marks out of the class NS. No
+        // rule of the standard names them then.
+        c = LB_NSX;
+    }
     else if c == LB_QU {
         if cat == 16 { f |= LBF_PI; }
         if cat == 17 { f |= LBF_PF; }
@@ -282,15 +311,25 @@ fn lb_advance(u: const i64[:], k: i64, st: LineState&) {
 // break, and it is mandatory. Returns a fault code and the offset of the
 // first bad byte. A fault clears out.
 fn line_breaks(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
+    return line_breaks_style(out, s, LINE_STYLE_STRICT);
+}
+
+// Writes the break opportunities of s to out, for one style. The styles
+// are the constants LINE_STYLE_STRICT, LINE_STYLE_NORMAL and
+// LINE_STYLE_LOOSE. The strict style gives the breaks of the plain
+// call. A style outside the known values gives the strict style.
+fn line_breaks_style(out: i64[>..]&, s: const u8[:], style: i64) -> i64, i64 {
     out.clear();
     if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
+    var st = style;
+    if st < LINE_STYLE_STRICT || st > LINE_STYLE_LOOSE { st = LINE_STYLE_STRICT; }
     var units: i64[>..] = [];
     var starts: i64[>..] = [];
     var i: i64 = 0;
     while i < s.len {
         let cp, n = decode_at(s, i);
         if cp < 0 { return ERR_BAD_UTF8, i; }
-        let p = lb_pack(cp);
+        let p = lb_pack_style(cp, st);
         let c = p & 63;
         let m = units.len;
         // LB9 and LB10: a mark or joiner joins the unit before it, unless

@@ -76,18 +76,35 @@ fn dict_node(t: i64, i: i64) -> i64 {
     return DICT_CJ_DATA[i];
 }
 
-// The child of a node for one code point. -1 when the node has none.
-fn dict_child(t: i64, node: i64, cp: i64) -> i64 {
-    let v = dict_node(t, node);
+// The table of the nodes of one word list.
+fn dict_table(t: i64) -> const i64[:] {
+    dict_load();
+    if t == DICT_THAI { return DICT_THAI_DATA[..]; }
+    if t == DICT_LAO { return DICT_LAO_DATA[..]; }
+    if t == DICT_BURMESE { return DICT_BURMESE_DATA[..]; }
+    if t == DICT_KHMER { return DICT_KHMER_DATA[..]; }
+    return DICT_CJ_DATA[..];
+}
+
+// The child of a node for one code point, in a table of nodes. -1 when
+// the node has none. The layout of a node is the layout of every trie
+// of the package.
+fn trie_child(data: const i64[:], node: i64, cp: i64) -> i64 {
+    let v = data[node];
     var lo = (v >> 15) & 0x1FFFFF;
     var hi = lo + ((v >> 1) & 0x3FFF);
     while lo < hi {
         let mid = (lo + hi) / 2;
-        let c = (dict_node(t, mid) >> 36) & 0x1FFFFF;
+        let c = (data[mid] >> 36) & 0x1FFFFF;
         if c == cp { return mid; }
         if c < cp { lo = mid + 1; } else { hi = mid; }
     }
     return -1;
+}
+
+// The child of a node for one code point. -1 when the node has none.
+fn dict_child(t: i64, node: i64, cp: i64) -> i64 {
+    return trie_child(dict_table(t), node, cp);
 }
 
 // Finds the words of trie t that start at index at of the code points c.

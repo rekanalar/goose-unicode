@@ -36,17 +36,8 @@ fn is_turkic(locale: i64) -> bool {
 // three ASCII letters, then the end of the tag, a hyphen or an underscore.
 // The letters match without regard to case. Any other tag gives LOCALE_ROOT.
 fn locale_of(tag: const u8[:]) -> i64 {
-    var n: i64 = 0;
-    var l: i64 = 0;
-    while n < tag.len && n < 4 {
-        var c = tag[n] as i64;
-        if c >= 65 && c <= 90 { c += 32; }
-        if c < 97 || c > 122 { break; }
-        l = (l << 8) | c;
-        n += 1;
-    }
-    if n < 2 || n > 3 { return LOCALE_ROOT; }
-    if n < tag.len && tag[n] != '-' && tag[n] != '_' { return LOCALE_ROOT; }
+    let l = lang_key(tag);
+    if l == 0 { return LOCALE_ROOT; }
     if l == 0x7472 || l == 0x747572 { return LOCALE_TR; }  // tr, tur
     if l == 0x617A || l == 0x617A65 { return LOCALE_AZ; }  // az, aze
     if l == 0x6C74 || l == 0x6C6974 { return LOCALE_LT; }  // lt, lit

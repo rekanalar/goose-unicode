@@ -553,70 +553,14 @@ func main() {
 		// in hex, separated by spaces. The output holds the offsets of
 		// the boundaries from the ICU library, in UTF-16 units, each with
 		// the rule status of the segment that it ends.
-		tag := C.CString(os.Args[2])
-		defer C.free(unsafe.Pointer(tag))
-		sc := bufio.NewScanner(os.Stdin)
-		sc.Buffer(make([]byte, 1<<20), 1<<20)
-		for sc.Scan() {
-			var rs []rune
-			for _, f := range strings.Fields(sc.Text()) {
-				var v rune
-				fmt.Sscanf(f, "%X", &v)
-				rs = append(rs, v)
-			}
-			units := utf16.Encode(rs)
-			var err C.int32_t
-			bi := C.ubrk_open_79(1, tag, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
-			if bi == nil {
-				fmt.Fprintf(w, "error %d\n", int(err))
-				continue
-			}
-			var out []string
-			for {
-				p := int(C.ubrk_next_79(bi))
-				if p < 0 {
-					break
-				}
-				out = append(out, fmt.Sprintf("%d:%d", p, int(C.ubrk_getRuleStatus_79(bi))))
-			}
-			fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
-			C.ubrk_close_79(bi)
-		}
+		breakLines(w, 1, os.Args[2], true)
 	case "iculinebrk":
 		// The line break opportunities of one text for one locale. The argument is
 		// the locale. Each input line holds the code points of one text
 		// in hex, separated by spaces. The output holds the offsets of
 		// the boundaries from the ICU library, in UTF-16 units, each with
 		// the rule status of the segment that it ends.
-		tag := C.CString(os.Args[2])
-		defer C.free(unsafe.Pointer(tag))
-		sc := bufio.NewScanner(os.Stdin)
-		sc.Buffer(make([]byte, 1<<20), 1<<20)
-		for sc.Scan() {
-			var rs []rune
-			for _, f := range strings.Fields(sc.Text()) {
-				var v rune
-				fmt.Sscanf(f, "%X", &v)
-				rs = append(rs, v)
-			}
-			units := utf16.Encode(rs)
-			var err C.int32_t
-			bi := C.ubrk_open_79(2, tag, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
-			if bi == nil {
-				fmt.Fprintf(w, "error %d\n", int(err))
-				continue
-			}
-			var out []string
-			for {
-				p := int(C.ubrk_next_79(bi))
-				if p < 0 {
-					break
-				}
-				out = append(out, fmt.Sprintf("%d:%d", p, int(C.ubrk_getRuleStatus_79(bi))))
-			}
-			fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
-			C.ubrk_close_79(bi)
-		}
+		breakLines(w, 2, os.Args[2], true)
 	case "icuconv":
 		// The lossy decode of the ICU converter of the given name, such as
 		// UTF-8 or UTF-16LE. Each input line holds hex bytes. The output
@@ -671,6 +615,12 @@ func main() {
 				fmt.Fprintf(w, "%s %d\n", C.GoString(p), int(sig))
 			}
 		}
+	case "icusent":
+		// The sentence boundaries of one text for one locale. The argument
+		// is the locale. Each input line holds the code points of one text
+		// in hex, separated by spaces. The output holds the offsets of the
+		// boundaries from the ICU library, in UTF-16 units.
+		breakLines(w, 3, os.Args[2], false)
 	case "icuprop":
 		// The runs of the value of one ICU integer property, as the long
 		// name of the value. The argument is the number of the property.
@@ -1065,6 +1015,48 @@ func main() {
 }
 
 // The name of a code point in the ICU library. Empty when it has none.
+// The boundaries of one text for one locale, from the ICU break
+// iterator. The kind is the type of the iterator: 1 for the word, 2 for
+// the line and 3 for the sentence. Each input line holds the code
+// points of one text in hex, separated by spaces. The output holds the
+// offsets of the boundaries in UTF-16 units. Each offset holds the rule
+// status of the segment that it ends, when the status is asked for.
+func breakLines(w *bufio.Writer, kind int, locale string, withStatus bool) {
+	tag := C.CString(locale)
+	defer C.free(unsafe.Pointer(tag))
+	sc := bufio.NewScanner(os.Stdin)
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var rs []rune
+		for _, f := range strings.Fields(sc.Text()) {
+			var v rune
+			fmt.Sscanf(f, "%X", &v)
+			rs = append(rs, v)
+		}
+		units := utf16.Encode(rs)
+		var err C.int32_t
+		bi := C.ubrk_open_79(C.int32_t(kind), tag, (*C.uint16_t)(unsafe.Pointer(&units[0])), C.int32_t(len(units)), &err)
+		if bi == nil {
+			fmt.Fprintf(w, "error %d\n", int(err))
+			continue
+		}
+		var out []string
+		for {
+			p := int(C.ubrk_next_79(bi))
+			if p < 0 {
+				break
+			}
+			if withStatus {
+				out = append(out, fmt.Sprintf("%d:%d", p, int(C.ubrk_getRuleStatus_79(bi))))
+			} else {
+				out = append(out, fmt.Sprintf("%d", p))
+			}
+		}
+		fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
+		C.ubrk_close_79(bi)
+	}
+}
+
 func u_charName(r int) string {
 	var err C.int32_t
 	buf := make([]byte, 128)

@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.25.0";
+import unicode from "rekanalar/goose-unicode@v0.26.0";
 ```
 
 ## API
@@ -138,13 +138,22 @@ import unicode from "rekanalar/goose-unicode@v0.25.0";
 | `vertical_orientation(cp)` | the `Vertical_Orientation` of a code point, as its position in the alias file of the standard |
 | `vertical_orientation_name(cp)` | the short name of that value, such as `LE` or `Virama` |
 | `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31, with a break at each dictionary word end of a Thai, Lao, Khmer or Burmese run; gives the code and the offset of the first bad byte |
+| `line_breaks_style(out, s, style)` | the break opportunities of the text for one style: `LINE_STYLE_STRICT`, `LINE_STYLE_NORMAL` or `LINE_STYLE_LOOSE` |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
+| `sentence_offsets_locale(out, s, locale)` | the same, but the break after an abbreviation of the locale is held |
+| `sentence_locale_of(tag)` | the locale constant of a language tag, such as "en" or "de-DE" |
 | `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
 | `sort_key(out, s)` | the sort key of the text: the primary, the secondary and the tertiary weights |
 
 The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
 general category is one of `CAT_CN`, `CAT_LU`, `CAT_LL` and the other 26
 constants of the package.
+
+The locale of a sentence break is one of `SENT_LOCALE_ROOT`,
+`SENT_LOCALE_EN`, `SENT_LOCALE_DE`, `SENT_LOCALE_ES`, `SENT_LOCALE_FR`,
+`SENT_LOCALE_IT`, `SENT_LOCALE_PT` and `SENT_LOCALE_RU`. The style of a
+line break is one of `LINE_STYLE_STRICT`, `LINE_STYLE_NORMAL` and
+`LINE_STYLE_LOOSE`.
 
 Every call that writes text clears the buffer of the caller first, except
 `utf8_encode`, which appends. Every call that reads text gives a fault code
@@ -600,6 +609,36 @@ A malformed byte forms a segment of its own. The time of every call is
 linear in the text. A call reads ahead past the marks that join to one
 code point only. A sentence read stops at the next terminator.
 
+### The abbreviations of a locale
+
+The ICU library holds a list of abbreviations for each locale. The list
+of English holds "Mr." and "Dr." among 151 entries. An abbreviation holds
+the break after it, so "Mr. Smith" stays one sentence.
+
+The call `sentence_offsets_locale` takes the locale. The package holds
+the lists of the seven locales of ICU 79.1 that hold a list. English
+holds 151 entries, German 241, Spanish 164 and French 82. Italian holds
+45 entries, Portuguese 172 and Russian 18. The lists sit in the
+`sent_abbr_data.goose` file of the package.
+
+```goose
+var out: i64[>..] = [];
+let code = unicode::sentence_offsets_locale(out,
+    "Mr. Smith went home. Dr. Jones stayed.", unicode::SENT_LOCALE_EN);
+// out is [0, 21, 25]: the first sentence starts at 0, the second at 21,
+// and the third at 25
+```
+
+The call follows the rule of the filtered sentence iterator of ICU. The
+text before a break is the region. One space at the end of the region is
+skipped. The match runs backwards over the region, and the longest match
+wins. An abbreviation that is a prefix of another one needs a second
+match, and that match runs forwards.
+
+The plain call `sentence_offsets` splits "Mr. Smith" after "Mr.". Node 22
+`Intl.Segmenter` and the Rust crate `icu_segmenter` 2.4.0 split it there
+too. ICU is the only library that holds the lists.
+
 ### Words of Thai, Lao, Khmer, Burmese, Chinese and Japanese
 
 These scripts write no spaces between the words. The word calls split a
@@ -682,6 +721,29 @@ space, a full stop or a no-break space ends a run. A word that stands
 alone gets no added break. The Han, Hiragana and Katakana breaks come
 from the rules, as in the ICU root line style. The ICU line style
 `phrase` uses a dictionary for them, and the package has no such style.
+
+### The styles of a line break
+
+The ICU library holds three line styles. The strict style is the style of
+the standard. The normal and the loose styles follow the tailorings of
+ICU. The call `line_breaks_style` takes the style. The strict style gives
+the same breaks as the plain call `line_breaks`.
+
+The styles differ in two places. The strict style resolves the class CJ
+to the class NS. The normal and the loose styles resolve it to the class
+ID.
+
+The loose style takes the six iteration marks U+3005, U+303B, U+309D,
+U+309E, U+30FD and U+30FE out of the class NS. A break before a mark is
+then allowed, unless another rule holds it.
+
+```goose
+var brk: i64[>..] = [];
+let code, off = unicode::line_breaks_style(brk, "ヽヾー々〻",
+    unicode::LINE_STYLE_LOOSE);
+// brk is [6, 12, 18, 24, 31]: a break at each mark, and the end of the
+// text
+```
 
 ## Bidirectional text
 
@@ -845,7 +907,11 @@ if code == unicode::OK && out[0] == -1 {
   Go `x/text` writes a mark of class 220 before the dot. It also adds a
   second dot after U+0130. The package follows ICU.
 
-- The word and sentence splits follow the default rules and no locale.
+- The word split follows the default rules and no locale. The ICU
+  library 79.1 has no locale effect either. The locales root, ja, zh
+  and en give the same breaks over 400 texts of Chinese and Japanese.
+  The sentence split takes a locale. The line break takes a style.
+
   Thai, Lao, Khmer, Burmese, Chinese and Japanese text goes through the
   word lists of ICU 79.1. Before this release a Thai run was one
   segment and each Han ideograph was a segment. They now split at the
@@ -867,8 +933,12 @@ if code == unicode::OK && out[0] == -1 {
   lists. The package holds no LSTM model. The ICU build that served as
   the oracle holds no LSTM data. It uses the word lists, as the package
   does. A build with LSTM data can split Thai and Burmese differently.
-- The sentence split holds no list of abbreviations. It splits "Mr. Smith"
-  after "Mr.".
+- The sentence split holds the abbreviations of seven locales. The ICU
+  library 79.1 holds the same lists. The plain call splits "Mr. Smith"
+  after "Mr.", and so do Node 22 `Intl.Segmenter` and the Rust crate
+  `icu_segmenter` 2.4.0. The call with a locale holds the break. ICU is
+  the only library that holds the lists, so no other library can check
+  the result of the call.
 - The `is_word_like` call gives false for a text above `MAX_INPUT` and for
   a bad range. It has no fault code. `is_word_like_checked` gives the
   fault code. An empty range gives `OK` and false there.
@@ -897,10 +967,10 @@ if code == unicode::OK && out[0] == -1 {
   where it gives the jamo as Python does. The ICU library has no such
   call, so the mapping has Python as its only reference. A value outside
   the range gives the value of an unassigned code point.
-- The line breaks follow the default rules and no tailoring. The
-  package has one line style. The ICU styles `loose`, `strict` and
-  `phrase` have no counterpart. The package leaves the width of a line
-  to the caller.
+- The line breaks follow the standard and the two tailorings of ICU.
+  The package has the styles `strict`, `normal` and `loose`. The ICU
+  style `phrase` has no counterpart, because it needs the dictionary of
+  the line break. The package leaves the width of a line to the caller.
 - The dictionary line breaks follow the word lists of one ICU release,
   the one of the word split. A word that the lists miss stays inside
   its run. ICU can use LSTM models for Thai and Burmese instead of the
@@ -909,6 +979,10 @@ if code == unicode::OK && out[0] == -1 {
   these scripts. The battery holds 10,498 texts. Its dictionary form
   differs on 2,869 of them. Its automatic form differs on 9,040. The
   cause is not investigated.
+
+  The crate also differs from ICU on the styles. It differs on 21 of the
+  600 texts in the strict and the normal style. It differs on 45 in the
+  loose style. The package follows ICU on every text.
 - The bidirectional calls treat a paragraph as one line. A caller that
   breaks a paragraph into lines passes the levels of each line to
   `bidi_order`. The rules L3 and L4 depend on the renderer, and the
@@ -1057,6 +1131,13 @@ beyond the reference libraries.
   replacement character U+FFFD for a bad byte. It cannot report the
   fault. A program that stores the replacement character loses the
   difference between a bad byte and a real U+FFFD.
+- The abbreviations of a locale are fixed data. They hold no input of
+  the caller. The call reads each byte of the text once. It walks back
+  at most eleven code points for each break. A hostile text of
+  abbreviations cannot take quadratic time.
+
+  The test suite breaks 1 MiB of English text with many abbreviations.
+  It takes about a third of a second on this machine.
 - The word and sentence splits take linear time. A long run of marks
   after an apostrophe runs in one pass. A long run of terminators runs in
   one pass. A long run of regional indicators runs in one pass. The test
@@ -1145,6 +1226,7 @@ goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/linedict.goose
+goose run examples/locales.goose
 goose run examples/collate.goose
 goose run examples/properties.goose
 goose run examples/casefold.goose

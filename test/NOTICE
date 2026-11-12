@@ -62,6 +62,13 @@ script test/make_width_data.py reads the crate through the oracle in
 test/oracle and writes numbers only. No source code of the crate is in
 this package.
 
+The sentence break exceptions of the seven locales come from the ICU
+library, release 79.1, source tree icu4c/source/data/brkitr: en.txt,
+de.txt, es.txt, fr.txt, it.txt, pt.txt and ru.txt. The files carry the
+Unicode License. The script test/make_sent_abbr_data.py reads the lists
+and writes trie numbers only into the package. No list file itself is in
+this package.
+
 The five word lists of the dictionary word segmentation come from the
 ICU library, release 79.1, source tree
 icu4c/source/data/brkitr/dictionaries: thaidict.txt, khmerdict.txt,

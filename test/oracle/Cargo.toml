@@ -52,3 +52,7 @@ path = "lineseg.rs"
 [[bin]]
 name = "lossy"
 path = "lossy.rs"
+
+[[bin]]
+name = "sent"
+path = "sent.rs"

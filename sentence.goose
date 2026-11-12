@@ -133,3 +133,31 @@ fn sentence_offsets(out: i64[>..]&, s: const u8[:]) -> i64 {
     }
     return OK;
 }
+
+// Writes the start offset of every sentence of s to out. The break
+// after an abbreviation of the locale is held, so "Mr. Smith" stays one
+// sentence. The locale values are the constants SENT_LOCALE_ROOT to
+// SENT_LOCALE_RU. out is cleared first.
+fn sentence_offsets_locale(out: i64[>..]&, s: const u8[:], locale: i64) -> i64 {
+    out.clear();
+    if s.len > MAX_INPUT { return ERR_TOO_LONG; }
+    // A locale outside the known values holds no list. The call gives
+    // the starts of the plain call.
+    if locale < SENT_LOCALE_EN || locale > SENT_LOCALE_RU {
+        return sentence_offsets(out, s);
+    }
+    sent_abbr_load();
+    var at: i64 = 0;
+    while at < s.len {
+        out.push(at);
+        let code, end = sentence_next(s, at);
+        at = end;
+        // A break that an abbreviation holds is not a start of a
+        // sentence. The next break of the plain call is the start.
+        while at < s.len && sent_abbr_holds(s, at, locale) {
+            let code2, end2 = sentence_next(s, at);
+            at = end2;
+        }
+    }
+    return OK;
+}
