@@ -920,8 +920,19 @@ if code == unicode::OK && out[0] == -1 {
   on each of 12,100 texts of these scripts. Rust `icu_segmenter` 2.4.0
   differs from ICU on 4,449 of the first 11,300 of them with
   `WordSegmenter::new_dictionary`. It differs on 7,063 with `new_auto`,
-  which uses a neural model for Burmese. The cause of the differences
-  is not investigated. The package follows ICU.
+  which uses a neural model for Burmese. The package follows ICU.
+
+  The conformance file `WordBreakTest.txt` of Unicode 18.0.0 holds 1,944
+  cases. ICU 79.1 matches every case. The default rule set of the Rust
+  crate differs on 71 of them. No conformance file tests the dictionary
+  splits, which follow the word lists.
+
+  The ICU engines for Thai, Lao, Burmese and Khmer add rules to the
+  word match. They look ahead three words. They join a short word with
+  its remainder. The Thai engine also handles the repeat and the
+  elision sign. The Rust engine takes the longest dictionary match and
+  adds no such rule. The line break of the SA scripts uses the same
+  engines, so the line splits differ for the same reason.
 - Rust `unicode-segmentation` follows the default rules and gives no
   split inside a Thai run. Python has no such call in the standard
   library.
@@ -977,12 +988,25 @@ if code == unicode::OK && out[0] == -1 {
   lists, and the package holds no LSTM model.
 - Rust `icu_segmenter` 2.4.0 gives other line breaks than ICU 79.1 for
   these scripts. The battery holds 10,498 texts. Its dictionary form
-  differs on 2,869 of them. Its automatic form differs on 9,040. The
-  cause is not investigated.
-
-  The crate also differs from ICU on the styles. It differs on 21 of the
-  600 texts in the strict and the normal style. It differs on 45 in the
-  loose style. The package follows ICU on every text.
+  differs on 2,869 of them. Its automatic form differs on 9,040.
+  The `neo` rule set differs on 7,261 of them too, so the rule set is
+  not the cause. The cause is the dictionary engine of the SA scripts.
+- The ICU engines of the SA scripts look ahead three words. They join a
+  short word with its remainder. They hold the Thai sign rules. The
+  Rust engine takes the longest match and holds none of these.
+- The conformance file `LineBreakTest.txt` of Unicode 18.0.0 holds
+  19,346 cases. ICU 79.1 matches every case. The default rule set of
+  the Rust crate differs on 328 of them. Its rule set of Unicode 17
+  differs on 40. Its `neo` rule set of Unicode 18 matches every case,
+  and the `unstable` Cargo feature guards both newer sets. The default
+  set of the crate trails the standard, and the package follows ICU.
+- The crate also differs from ICU on the styles. The style battery
+  holds 2,552 texts. The default rule set differs on 152 of them in
+  the strict style. It differs on 152 in the normal style. It differs
+  on 603 in the loose style.
+- The rule set of Unicode 17 differs on 548 in the loose style. The
+  `neo` rule set matches ICU on every text of every style. The package
+  follows ICU.
 - The bidirectional calls treat a paragraph as one line. A caller that
   breaks a paragraph into lines passes the levels of each line to
   `bidi_order`. The rules L3 and L4 depend on the renderer, and the
