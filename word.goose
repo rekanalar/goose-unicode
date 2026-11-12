@@ -153,8 +153,10 @@ fn dict_category(cp: i64) -> bool {
 // rule segment [at, end). Every run of engine script letters goes to the
 // engine of its script; the offsets come out in ascending order. A rule
 // segment of one UTF-16 unit goes to no engine. A code point with no
-// engine of its own ends the run that it starts.
-fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
+// engine of its own ends the run that it starts. When cjk is false, only
+// the scripts of the line break class SA have an engine: the Han,
+// Hiragana and Katakana code points go to none.
+fn engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64, cjk: bool) {
     // Every code point of a script with an engine starts with a byte of
     // 0xE0 or above, so a segment without such a byte needs no engine.
     var high: bool = false;
@@ -187,14 +189,14 @@ fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
             while k < c.len && dict_plain_of(c[k]) == t { k += 1; }
             dict_plain(t, c[start..k], off[start..k + 1], out);
             j = k;
-        } else if dict_cj_own(c[j]) || c[j] == 0x30FC || c[j] == 0xFF70
-            || c[j] == 0xFF9E || c[j] == 0xFF9F {
+        } else if cjk && (dict_cj_own(c[j]) || c[j] == 0x30FC || c[j] == 0xFF70
+            || c[j] == 0xFF9E || c[j] == 0xFF9F) {
             let start = j;
             var k = j + 1;
             while k < c.len && dict_cj_set(c[k]) { k += 1; }
             dict_cj(c[start..k], off[start..k + 1], out);
             j = k;
-        } else if dict_category(c[j]) {
+        } else if (cjk && dict_category(c[j])) || line_break_class(c[j]) == LB_SA {
             // The code point has no engine. The reference library hands it
             // to a reject engine that reads the whole run of the script of
             // the code point and adds no break, so the next run starts
@@ -205,6 +207,18 @@ fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
             j += 1;
         }
     }
+}
+
+// The dictionary breaks of the word split inside the rule segment
+// [at, end).
+fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
+    engine_breaks(out, s, at, end, true);
+}
+
+// The dictionary breaks of the line split inside the rule segment
+// [at, end). Only the scripts of the line break class SA have an engine.
+fn line_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
+    engine_breaks(out, s, at, end, false);
 }
 
 // True when the code point belongs to an engine run. kind is 0 for a

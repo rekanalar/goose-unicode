@@ -326,5 +326,49 @@ fn line_breaks(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
         lb_advance(units[..], k, st);
     }
     if units.len > 0 { out.push(s.len * 2 + BREAK_MANDATORY); }
+    line_dictionary_pass(out, s);
     return OK, 0;
+}
+
+// True when the bytes [at, end) hold a code point of the line break class
+// SA. Only a code point that starts with a byte of 0xE0 or above can have
+// that class, so the scan skips the other bytes.
+fn line_has_sa(s: const u8[:], at: i64, end: i64) -> bool {
+    var i = at;
+    while i < end {
+        let cp, n = decode_at(s, i);
+        if s[i] >= 0xE0 && line_break_class(cp) == LB_SA { return true; }
+        i += n;
+    }
+    return false;
+}
+
+// The second pass of the line split. The rules gave the breaks in out.
+// A rule segment that holds letters of a script with a word list goes
+// to the dictionary engine of the script. The engine adds soft breaks
+// inside the runs. A rule break stays as it is, and the flag of a
+// mandatory break stays too. The text is valid UTF-8 at this point.
+fn line_dictionary_pass(out: i64[>..]&, s: const u8[:]) {
+    var high = false;
+    for k in 0..s.len {
+        if s[k] >= 0xE0 { high = true; break; }
+    }
+    if !high { return; }
+    var merged: i64[>..] = [];
+    var inner: i64[>..] = [];
+    var at: i64 = 0;
+    var added = false;
+    for k in 0..out.len {
+        let end = out[k] >> 1;
+        if line_has_sa(s, at, end) {
+            inner.clear();
+            line_engine_breaks(inner, s, at, end);
+            for m in 0..inner.len { merged.push(inner[m] * 2); added = true; }
+        }
+        merged.push(out[k]);
+        at = end;
+    }
+    if !added { return; }
+    out.clear();
+    for k in 0..merged.len { out.push(merged[k]); }
 }

@@ -56,3 +56,5 @@ import greek_cases;
 import greek_suite;
 import dict_cases;
 import dict_suite;
+import line_dict_cases;
+import line_dict_suite;

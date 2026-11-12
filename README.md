@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.23.0";
+import unicode from "rekanalar/goose-unicode@v0.24.0";
 ```
 
 ## API
@@ -127,7 +127,7 @@ import unicode from "rekanalar/goose-unicode@v0.23.0";
 | `indic_positional_category_name(cp)` | the short name of that value, such as `LE` or `Virama` |
 | `vertical_orientation(cp)` | the `Vertical_Orientation` of a code point, as its position in the alias file of the standard |
 | `vertical_orientation_name(cp)` | the short name of that value, such as `LE` or `Virama` |
-| `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31; gives the code and the offset of the first bad byte |
+| `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31, with a break at each dictionary word end of a Thai, Lao, Khmer or Burmese run; gives the code and the offset of the first bad byte |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
 | `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
 | `sort_key(out, s)` | the sort key of the text: the primary, the secondary and the tertiary weights |
@@ -601,9 +601,30 @@ category, the East Asian width and the emoji flag where the rules name
 them.
 
 The package agrees with every case of `LineBreakTest.txt`. It agrees
-with the ICU line iterator on 25,000 random texts. Rust
-`unicode-linebreak` holds an older release of the tables. Python and Go
-have no such call in the standard library or in `x/text`.
+with the ICU line iterator on 25,000 random texts. It agrees with the
+ICU line iterator on 10,498 texts of Thai, Lao, Khmer and Burmese too.
+Rust `unicode-linebreak` holds an older release of the tables. Python and
+Go have no such call in the standard library or in `x/text`.
+
+### Words of Thai, Lao, Khmer and Burmese
+
+These scripts write no spaces between the words, so the rules give no
+break inside a run of their letters. The line break call adds a break
+at each word end, as the ICU line iterator does. It uses the same word
+lists as the word split. The added breaks are soft breaks, and every
+break of the rules stays.
+
+```goose
+var brk: i64[>..] = [];
+let code, off = unicode::line_breaks(brk, "ภาษาไทย");
+// brk is [24, 43]: a soft break at byte 12, and the end of the text
+```
+
+The call adds a break only inside a run of letters of one script. A
+space, a full stop or a no-break space ends a run. A word that stands
+alone gets no added break. The Han, Hiragana and Katakana breaks come
+from the rules, as in the ICU root line style. The ICU line style
+`phrase` uses a dictionary for them, and the package has no such style.
 
 ## Bidirectional text
 
@@ -818,10 +839,18 @@ if code == unicode::OK && out[0] == -1 {
   where it gives the jamo as Python does. The ICU library has no such
   call, so the mapping has Python as its only reference. A value outside
   the range gives the value of an unassigned code point.
-- The line breaks follow the default rules and no tailoring. They give no
-  dictionary break inside Thai, Lao, Khmer or Burmese. The ICU iterator
-  breaks those scripts with a dictionary, so it gives other breaks
-  there. The package leaves the width of a line to the caller.
+- The line breaks follow the default rules and no tailoring. The
+  package has one line style. The ICU styles `loose`, `strict` and
+  `phrase` have no counterpart. The package leaves the width of a line
+  to the caller.
+- The dictionary line breaks follow the word lists of one ICU release,
+  the one of the word split. A word that the lists miss stays inside
+  its run. ICU can use LSTM models for Thai and Burmese instead of the
+  lists, and the package holds no LSTM model.
+- Rust `icu_segmenter` 2.4.0 gives other line breaks than ICU 79.1 for
+  these scripts. The battery holds 10,498 texts. Its dictionary form
+  differs on 2,869 of them. Its automatic form differs on 9,040. The
+  cause is not investigated.
 - The bidirectional calls treat a paragraph as one line. A caller that
   breaks a paragraph into lines passes the levels of each line to
   `bidi_order`. The rules L3 and L4 depend on the renderer, and the
@@ -950,6 +979,11 @@ beyond the reference libraries.
   bytes. A hostile text of spaces, combining marks, regional indicators,
   quotes or digits cannot take quadratic time. The text is at most
   `MAX_INPUT` bytes, and the arrays hold two numbers for each code point.
+- The dictionary line stage reads each rule segment once. Only a
+  segment with a letter of the class SA reaches the word engines. The
+  test suite breaks 1 MiB of one Thai letter and 1 MiB of Thai words.
+  Each takes about half a second on this machine. A bad byte stays a
+  fault with its offset, and the stage runs on valid text only.
 - The width walk of a text holds one small state and reads the text from
   the end. The time is linear in the bytes. A hostile text of joiners,
   regional indicators or variation selectors cannot take quadratic time.
@@ -1048,6 +1082,7 @@ goose run examples/title.goose
 goose run examples/bidi.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
+goose run examples/linedict.goose
 goose run examples/collate.goose
 goose run examples/properties.goose
 goose run examples/casefold.goose

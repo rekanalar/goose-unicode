@@ -76,6 +76,7 @@ fn main() {
     bad += suite::run_locale();
     bad += suite::run_greek();
     bad += suite::run_dict();
+    bad += suite::run_line_dict();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

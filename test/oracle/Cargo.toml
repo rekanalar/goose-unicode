@@ -44,3 +44,7 @@ opt-level = 2
 [[bin]]
 name = "wordseg"
 path = "wordseg.rs"
+
+[[bin]]
+name = "lineseg"
+path = "lineseg.rs"
