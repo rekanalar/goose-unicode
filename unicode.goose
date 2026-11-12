@@ -67,6 +67,8 @@ import dict_data_cj;
 import dict_match;
 import dict_engine;
 import dict_cj;
+import emoji_seq_data;
+import emoji_seq;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "18.0.0";

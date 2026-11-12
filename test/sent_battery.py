@@ -106,16 +106,6 @@ def icu_lines(texts, style):
     return out
 
 
-def pool_bytes(values):
-    """The pool of the values: three bytes each, low byte first."""
-    out = bytearray()
-    for v in values:
-        if v < 0 or v > 0xFFFFFF:
-            u.fail("the value %d does not fit three bytes" % v)
-        out += bytes([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF])
-    return bytes(out)
-
-
 def sentence_texts(src):
     """The texts of the sentences: the abbreviations of every locale."""
     out = []
@@ -193,7 +183,7 @@ def main():
         "The number of the cases of the sentence abbreviations."),
         u.bytes_array(
         "SENT_CASES_POOL",
-        pool_bytes(values),
+        u.pool_bytes(values),
         "The cases of the sentence abbreviations. Each case holds the"
         " locale, the count of the code points, the code points, the"
         " count of the starts and the starts. The values take three"
@@ -220,7 +210,7 @@ def main():
         "The number of the cases of the line styles."),
         u.bytes_array(
         "LINE_STYLE_CASES_POOL",
-        pool_bytes(values),
+        u.pool_bytes(values),
         "The cases of the line styles. Each case holds the count of the"
         " code points, the code points, and then the breaks of the"
         " strict, the normal and the loose style. Each list holds the"

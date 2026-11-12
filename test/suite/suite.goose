@@ -63,3 +63,5 @@ import line_style_cases;
 import sent_abbr_suite;
 import lossy_cases;
 import lossy_suite;
+import emoji_seq_cases;
+import emoji_seq_suite;

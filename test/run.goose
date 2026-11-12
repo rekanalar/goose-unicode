@@ -79,6 +79,7 @@ fn main() {
     bad += suite::run_line_dict();
     bad += suite::run_sent_abbr();
     bad += suite::run_lossy();
+    bad += suite::run_emoji_seq();
     if bad > 0 {
         print(bad, " checks failed\n");
         assert(false);

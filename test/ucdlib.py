@@ -118,6 +118,16 @@ def bytes_array(name, data, comment=None):
     return "\n".join(out)
 
 
+def pool_bytes(values):
+    """The pool of the values: three bytes each, low byte first."""
+    out = bytearray()
+    for v in values:
+        if v < 0 or v > 0xFFFFFF:
+            fail("the value %d does not fit three bytes" % v)
+        out += bytes([v & 0xFF, (v >> 8) & 0xFF, (v >> 16) & 0xFF])
+    return bytes(out)
+
+
 def write_goose(path, script, parts, namespace="unicode"):
     header = HEADER.format(version=VERSION, script=script)
     if namespace != "unicode":

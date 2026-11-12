@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.26.0";
+import unicode from "rekanalar/goose-unicode@v0.27.0";
 ```
 
 ## API
@@ -144,10 +144,19 @@ import unicode from "rekanalar/goose-unicode@v0.26.0";
 | `sentence_locale_of(tag)` | the locale constant of a language tag, such as "en" or "de-DE" |
 | `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
 | `sort_key(out, s)` | the sort key of the text: the primary, the secondary and the tertiary weights |
+| `emoji_sequence_kinds(s)` | the mask of the kind of the text, when the whole text is one emoji sequence; 0 otherwise |
+| `is_rgi_emoji(s)` | true when the whole text is one emoji sequence of the standard |
+| `is_emoji_sequence(s, kind)` | true when the whole text is one sequence of a kind in the mask |
+| `emoji_sequence_kinds_checked(s)` | the code, the offset of the first bad byte and the mask |
+| `emoji_sequences(out, s)` | the start and end byte offsets of each emoji sequence in the text; gives the code and the offset of the first bad byte |
 
 The form is one of `FORM_NFC`, `FORM_NFD`, `FORM_NFKC` and `FORM_NFKD`. The
 general category is one of `CAT_CN`, `CAT_LU`, `CAT_LL` and the other 26
 constants of the package.
+
+The kind of an emoji sequence is one of `EMOJI_SEQ_BASIC`, `EMOJI_SEQ_KEYCAP`,
+`EMOJI_SEQ_MODIFIER`, `EMOJI_SEQ_FLAG`, `EMOJI_SEQ_TAG` and `EMOJI_SEQ_ZWJ`.
+The constant `EMOJI_SEQ_RGI` holds all six kinds.
 
 The locale of a sentence break is one of `SENT_LOCALE_ROOT`,
 `SENT_LOCALE_EN`, `SENT_LOCALE_DE`, `SENT_LOCALE_ES`, `SENT_LOCALE_FR`,
@@ -486,6 +495,49 @@ print(unicode::category_group(0x31));   // 2, GROUP_NUMBER
 
 A call with a value outside U+0000 to U+10FFFF gives false. The group of
 such a value is `GROUP_OTHER`.
+
+## Emoji sequences
+
+The standard lists the emoji sequences in two data files. A sequence is
+one of six kinds.
+
+- A basic sequence is one emoji code point, or a base with the selector U+FE0F.
+- A keycap sequence is a digit, U+FE0F and U+20E3.
+- A modifier sequence is a person with a skin tone.
+- A flag sequence is two regional indicators.
+- A tag sequence is the flag of England, Scotland or Wales.
+- A ZWJ sequence joins emoji with U+200D.
+
+The package holds the 3,972 sequences of Unicode 18.0.0. The ICU library
+calls them `Basic_Emoji`, `Emoji_Keycap_Sequence`, the `RGI_Emoji_*`
+sequences and `RGI_Emoji`. Node gives them as classes of the `v` flag of
+a regular expression.
+
+The whole text calls test one text. The text has to be exactly one
+sequence. A text with a byte before or after a sequence gives 0 or false.
+The mask of a text holds the bit of its kind. No text holds two kinds.
+The call `is_emoji_sequence` with `EMOJI_SEQ_RGI` is true for any kind.
+
+The scan call finds the sequences in a longer text. It takes the longest
+sequence at each position and does not overlap. It writes the start and
+the end of each sequence, in bytes. A code point that starts no sequence
+gives no pair. This holds for a lone regional indicator, for U+2764
+without U+FE0F and for a plain copyright sign.
+
+```goose
+var out: i64[>..] = [];
+let code, offset = unicode::emoji_sequences(out, "a🇯🇵🇺🇸b😀x©️");
+print(out);   // 1 9 9 17 18 22 23 28
+print(unicode::is_emoji_sequence("🇯🇵", unicode::EMOJI_SEQ_FLAG));   // true
+print(unicode::is_emoji_sequence("1⃣", unicode::EMOJI_SEQ_KEYCAP));   // false
+```
+
+The text `1⃣` has no U+FE0F, so it is no keycap. Two flags in a row are no
+sequence for the whole text calls. The scan gives two pairs for them.
+
+The checked call and the scan give the code and the offset of the first
+bad byte. The offset is 0 when the call gives no fault. A fault leaves
+the buffer of the scan empty.
 
 ## Binary properties
 
@@ -878,6 +930,17 @@ if code == unicode::OK && out[0] == -1 {
 
 ## Limits
 
+- The emoji sequence calls follow the files of Unicode 18.0.0, as ICU 79.1
+  does. Node 22 holds Unicode 17.0.0, so it lacks 19 sequences. Nine are the
+  code points U+1F6D9, U+1FA8B, U+1FA8C, U+1FA8D, U+1FACC, U+1FADD, U+1FAEB,
+  U+1FAF9 and U+1FAFA. Ten are modifier sequences of U+1FAF9 and U+1FAFA.
+  The package and Node differ on these 19 only.
+- The Rust crate `icu_properties` holds the `Basic_Emoji` set only. It holds
+  no keycap, flag, tag, modifier or ZWJ set. The package has no Rust check
+  for those five kinds.
+- The emoji sequence calls hold the sequences of the standard only. They
+  hold no custom sequence and no user list. A sequence that a vendor adds
+  is no sequence of the package.
 - An identifier is more than the start and continue tests. A caller that
   accepts names from users also normalizes the text to NFC. It checks for
   look alike characters too, as UAX #31 and UAX #39 describe. The package
@@ -1103,6 +1166,12 @@ if code == unicode::OK && out[0] == -1 {
 The package parses text from people we do not know. These protections go
 beyond the reference libraries.
 
+- The emoji sequence calls bound the work. A whole text above 35 bytes gives
+  0 or false at once, because no sequence is longer. The scan tries at most
+  10 code points at each position, so its time grows in step with the text.
+  A text of one mebibyte of one joiner, tag character or modifier returns in under one second.
+  A bad byte gives `ERR_BAD_UTF8` and the offset. The scan leaves its buffer
+  empty after any fault.
 - Every call checks the length of its input before any other work. The
   limit is `MAX_INPUT` of 1,048,576 bytes. A longer input gives
   `ERR_TOO_LONG` and no work starts. The UTF-16 and UTF-32 encoders

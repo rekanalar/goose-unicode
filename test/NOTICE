@@ -34,6 +34,8 @@ The files of the Character Database that the scripts read:
   HangulSyllableType.txt
   PropList.txt
   emoji-variation-sequences.txt
+  emoji-sequences.txt
+  emoji-zwj-sequences.txt
   extracted/DerivedGeneralCategory.txt
   extracted/DerivedName.txt
   confusables.txt of the Unicode security data

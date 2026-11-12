@@ -43,6 +43,7 @@ int32_t uspoof_getSkeleton_79(const USpoofChecker* sc, uint32_t type, const uint
 void uspoof_close_79(USpoofChecker* sc);
 int32_t u_getPropertyEnum_79(const char* alias);
 int8_t u_hasBinaryProperty_79(int32_t c, int32_t which);
+int8_t u_stringHasBinaryProperty_79(const uint16_t* s, int32_t length, int32_t which);
 void* ucol_open_79(const char* loc, int32_t* err);
 void ucol_close_79(void* col);
 int32_t ucol_strcoll_79(void* col, const uint16_t* a, int32_t alen, const uint16_t* b, int32_t blen);
@@ -816,6 +817,57 @@ func main() {
 			}
 			return "N"
 		}, func(v string) bool { return v == "N" }, true)
+	case "icuemoji":
+		// Each input line holds the code points of one text in hex.
+		// The output holds the mask of the kinds of the text and the
+		// state of the RGI property. The kinds are the six properties
+		// of the ICU library, in the order of the mask of the package.
+		props := emojiProps()
+		if props == nil {
+			fmt.Fprintln(w, "unknown")
+			break
+		}
+		if len(os.Args) > 2 && os.Args[2] == "dump" {
+			// The argument names the kind. The output holds the runs of
+			// the code points that the library accepts alone.
+			var at int
+			if len(os.Args) < 4 {
+				fmt.Fprintln(w, "unknown")
+				break
+			}
+			fmt.Sscanf(os.Args[3], "%d", &at)
+			if at < 0 || at >= len(props) {
+				fmt.Fprintln(w, "unknown")
+				break
+			}
+			p := props[at]
+			w.Flush()
+			runs(func(r rune) string {
+				if emojiAccepts(p, r) {
+					return "Y"
+				}
+				return "N"
+			}, func(v string) bool { return v == "N" }, true)
+			break
+		}
+		rgiProp := emojiRgiProp()
+		sc := bufio.NewScanner(os.Stdin)
+		sc.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for sc.Scan() {
+			units := emojiUnits(sc.Text())
+			mask := 0
+			for i, p := range props {
+				if hasStringProp(units, p) {
+					mask |= 1 << i
+				}
+			}
+			rgi := 0
+			if hasStringProp(units, rgiProp) {
+				rgi = 1
+			}
+			fmt.Fprintf(w, "%d %d\n", mask, rgi)
+		}
 	case "iceskel":
 		// Each input line holds the code points of one text in hex.
 		// The output holds the code points of the skeleton of the text
@@ -1055,6 +1107,67 @@ func breakLines(w *bufio.Writer, kind int, locale string, withStatus bool) {
 		fmt.Fprintf(w, "%s\n", strings.Join(out, " "))
 		C.ubrk_close_79(bi)
 	}
+}
+
+// The number of the property of the ICU library. The number is minus
+// one when the library holds no property of that name.
+func propEnum(name string) C.int32_t {
+	cname := C.CString(name)
+	p := C.u_getPropertyEnum_79(cname)
+	C.free(unsafe.Pointer(cname))
+	return p
+}
+
+// The property numbers of the six kinds of the emoji sequence, in the
+// order of the mask of the package. The names are the names of the
+// properties in the ICU library. The list is nil when ICU holds no
+// property of that name.
+func emojiProps() []C.int32_t {
+	names := []string{"Basic_Emoji", "Emoji_Keycap_Sequence",
+		"RGI_Emoji_Modifier_Sequence", "RGI_Emoji_Flag_Sequence",
+		"RGI_Emoji_Tag_Sequence", "RGI_Emoji_ZWJ_Sequence"}
+	out := make([]C.int32_t, 0, len(names))
+	for _, name := range names {
+		p := propEnum(name)
+		if p < 0 {
+			return nil
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// The number of the RGI property of the ICU library.
+func emojiRgiProp() C.int32_t {
+	return propEnum("RGI_Emoji")
+}
+
+// The code points of a line of hex, as UTF-16 units. An empty line
+// gives an empty list.
+func emojiUnits(line string) []uint16 {
+	var rs []rune
+	for _, f := range strings.Fields(line) {
+		var v rune
+		fmt.Sscanf(f, "%X", &v)
+		rs = append(rs, v)
+	}
+	return utf16.Encode(rs)
+}
+
+// True when the library accepts the one code point text for the
+// property. A code point above the basic plane needs two units.
+func emojiAccepts(prop C.int32_t, r rune) bool {
+	return hasStringProp(utf16.Encode([]rune{r}), prop)
+}
+
+// True when the text holds the binary property of the ICU library. An
+// empty text gives a nil pointer and the length 0.
+func hasStringProp(units []uint16, prop C.int32_t) bool {
+	if len(units) == 0 {
+		return C.u_stringHasBinaryProperty_79(nil, 0, prop) != 0
+	}
+	return C.u_stringHasBinaryProperty_79((*C.uint16_t)(unsafe.Pointer(&units[0])),
+		C.int32_t(len(units)), prop) != 0
 }
 
 func u_charName(r int) string {
