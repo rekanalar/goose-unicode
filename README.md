@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.27.0";
+import unicode from "rekanalar/goose-unicode@v0.28.0";
 ```
 
 ## API
@@ -95,6 +95,17 @@ import unicode from "rekanalar/goose-unicode@v0.27.0";
 | `is_id_start(cp)`, `is_id_continue(cp)`, `is_xid_start(cp)`, `is_xid_continue(cp)` | the identifier properties of the standard |
 | `skeleton(out, s)` | writes the skeleton of the text: the key of the confusable table of the standard |
 | `confusable(a, b)` | true when the two texts have the same skeleton, so a person reads them the same |
+| `restriction_level(s, profile)` | the restriction level of a text: `RESTRICT_ASCII`, `RESTRICT_SINGLE`, `RESTRICT_HIGHLY`, `RESTRICT_MODERATELY`, `RESTRICT_MINIMALLY` or `RESTRICT_UNRESTRICTED`; `profile` is `PROFILE_ANY` or `PROFILE_ALLOWED`; a bad byte gives `RESTRICT_UNRESTRICTED`; ICU gives it through `uspoof_check2` |
+| `restriction_level_checked(s, profile)` | the same level with a fault: the code, the offset of the first bad byte and the level |
+| `restriction_level_name(level)` | the name of a level, such as `Highly Restrictive` |
+| `is_mixed_script(s)` | true when the resolved script set of the text is empty, so the text mixes scripts in one word |
+| `resolved_scripts(out, s)` | writes the script values of the resolved script set into the buffer; gives a fault code and the offset |
+| `identifier_allowed(cp)` | true when the identifier profile of the standard allows the code point |
+| `is_whole_script_confusable(s, script)` | true when the script holds a twin of the whole text |
+| `whole_script_twins(out, s)` | writes the scripts that hold a twin of the whole text; gives a fault code and the offset |
+| `confusable_kinds(a, b)` | the mask of `CONF_SINGLE`, `CONF_MIXED` and `CONF_WHOLE` for two texts with the same skeleton; 0 when the skeletons differ |
+| `SCRIPT_HANB`, `SCRIPT_JPAN`, `SCRIPT_KORE`, `SCRIPT_HNTL` | the writing systems of the standard; they hold several scripts and sit above the scripts of the package |
+| `MAX_WHOLE_SCRIPTS` | the largest number of scripts that one code point holds in the whole script table; the value is 17 |
 | `has_property(cp, prop)` | true when the code point holds the binary property; `prop` is a `PROP_` constant such as `PROP_WHITE_SPACE` |
 | `property_name(prop)`, `property_by_name(name)` | the name of a binary property, such as `White_Space`, and the constant of a name; -1 when there is none |
 | `mirrored(cp)` | true when the code point is mirrored |
@@ -610,6 +621,76 @@ uses the current revision, so the two skeletons differ on 228 of the
 `make_confusable_data.py` counts the difference and writes both
 skeletons into the suite.
 
+## Restriction levels
+
+The restriction level grades a text by the scripts that it holds. The
+level tells a caller how far a name may drift from one script. Past
+that point a reader may mistake it for another. The standard gives six
+levels. They run from the strictest to the loosest.
+
+| Level | What it means |
+|---|---|
+| `RESTRICT_ASCII` | ASCII-Only. Every code point of the text is U+007F or below. |
+| `RESTRICT_SINGLE` | Single Script. The resolved script set of the text holds at least one script. |
+| `RESTRICT_HIGHLY` | Highly Restrictive. One writing system covers the resolved set. |
+| `RESTRICT_MODERATELY` | Moderately Restrictive. The text holds Latin and one script of Table 5 of UAX #31. |
+| `RESTRICT_MINIMALLY` | Minimally Restrictive. The text mixes the scripts in another way. |
+| `RESTRICT_UNRESTRICTED` | Unrestricted. A code point of the text sits outside the identifier profile. |
+
+The `restriction_level` call gives the level of a text. The second
+argument chooses the code points that a name may hold. `PROFILE_ANY`
+accepts every code point. `PROFILE_ALLOWED` accepts only the code points
+of the identifier profile of the standard. A code point outside that
+profile gives `RESTRICT_UNRESTRICTED`.
+
+```goose
+let level = unicode::restriction_level("paypal", unicode::PROFILE_ANY);
+print(unicode::restriction_level_name(level));   // ASCII-Only
+```
+
+The `restriction_level_checked` call gives the level and the fault of the
+text. It gives the code, the byte offset of the first malformed byte and
+the level. A malformed byte gives `ERR_BAD_UTF8`. A text above
+`MAX_INPUT` bytes gives `ERR_TOO_LONG`.
+
+The resolved script set holds the scripts of the text. The standard adds
+four writing systems to the scripts of a code point. Each writing system
+holds several scripts. `SCRIPT_HANB` holds Han with Bopomofo, `SCRIPT_JPAN`
+holds Japanese, `SCRIPT_KORE` holds Korean and `SCRIPT_HNTL` holds
+Traditional Han with Latin. The `resolved_scripts` call writes the
+scripts of the resolved set into the buffer of the caller.
+
+The `is_mixed_script` call gives true when the resolved script set is
+empty. Such a text mixes scripts in one word. A Cyrillic `a` next to a
+Latin `p` gives an empty set.
+
+The `is_whole_script_confusable` call gives true when a script holds a
+twin of the whole text. The `whole_script_twins` call gives the scripts
+that hold such a twin. The test holds a text that sits in one script. A
+text that mixes scripts holds no twin, because the standard gives the
+test on the texts of one script. The `confusable_kinds` call gives the mask of the
+flags of a pair of texts. The mask holds `CONF_SINGLE`, `CONF_MIXED` and
+`CONF_WHOLE`.
+
+The package follows the revision 34 of the standard. The ICU library 79.1
+and the Rust crate `unicode-security` 0.1.3 do not apply the Hntl rule of
+that revision. The limits section names both differences and the value of
+each library.
+
+This table says what each reference library holds. The other three
+libraries were not run, so their rows come from their documentation.
+
+| Library | Levels | Mixed script | Whole script | Profile |
+|---|---|---|---|---|
+| ICU 79.1 | yes | no public call | no | yes, through `uspoof_setAllowedChars` |
+| Rust `unicode-security` 0.1.3 | yes | yes | no | yes, through `identifier_allowed` |
+| Node `unconfusables` 0.1.2 | yes | yes | no | yes |
+| Python `confusable_homoglyphs` 3.3.1 | no | yes, loose | no | no |
+| Go `SCKelemen/unicode/v6/uts39` 6.2.0 | yes, doubtful | yes | no | no |
+
+No library of the four holds the whole script test. The package is the
+only one of them that answers it.
+
 ## Enumerated properties
 
 Seven calls give an enumerated property of a code point. They are
@@ -930,6 +1011,70 @@ if code == unicode::OK && out[0] == -1 {
 
 ## Limits
 
+- The restriction level calls follow the revision 34 of UTS #39. Two classes
+  of text give another level in the ICU library 79.1 and in the Rust crate
+  `unicode-security` 0.1.3. The package states the measured level of each.
+
+  The first class holds the texts that mix Latin and Han. The package gives
+  Single Script, because the resolved set holds the writing system Hntl. The
+  ICU library gives Highly Restrictive. The Rust crate gives Highly
+  Restrictive for 6 such texts. It gives Unrestricted for 4, because
+  those 4 hold a code point outside its profile.
+
+  The second class holds the texts that hold a script that is neither
+  Recommended nor Cyrillic, Greek or Cherokee. The package gives Minimally
+  Restrictive, because the rule of the standard asks for a Recommended
+  script.
+
+  The ICU library asks for a set of no script, no Greek and no Cherokee. It
+  gives Moderately Restrictive for such a text. The Rust crate asks for a
+  set of exactly one script. It would give Highly Restrictive for such a
+  text.
+
+  The crate holds the profile always. So it gives Unrestricted for all 568
+  texts of the second class, because their code points sit outside the
+  profile. The 6 texts of the first class that sit inside the profile give
+  Highly Restrictive in the crate.
+
+  The battery of the package holds 15,459 texts. The package and the ICU
+  library differ on 578 of them without the identifier profile. Ten are the
+  texts of the first class and 568 are the texts of the second class. With
+  the profile the two libraries differ on 6 texts, all of the first class.
+  Every other text gives the same level.
+
+  The Rust crate holds the profile always. It differs from the package on
+  6 texts of the battery. Every one of them mixes Latin and Han.
+
+  The crate holds no Hntl, so its resolved script set differs on 10
+  texts of the battery. Every one of them mixes Latin and Han. The
+  resolved set of the package without Hntl gives the set of the crate on
+  every text of the battery.
+
+  The `confusable_kinds` call has the same difference. The battery holds
+  28 pairs of texts. For 2 of them, U+3007 against `O` in both orders, the
+  package gives `CONF_SINGLE`. The ICU library gives `CONF_MIXED` with
+  `CONF_WHOLE`. Every other pair gives the same mask.
+- The whole script test holds the table of Unicode 8.0.0. The file
+  `confusablesWholeScript.txt` holds 399 code points and their script sets.
+  Each row of that file names the script of the code point. It also names
+  the script that holds a confusable of it. The package uses the second
+  name only.
+  The Unicode Consortium stopped publishing that file after that release.
+
+  The security data of 18.0.0 holds no such file. The ICU library 79.1
+  dropped the whole script tables too, and its `uspoof_check2` call does no
+  confusable detection now. This test uses the data of Unicode 8.0.0.
+  The other calls use the data of Unicode 18.0.0.
+
+  The confusable table of 18.0.0 cannot give this table. The skeleton
+  groups of that file give a script set that ICU lacks for 187 code
+  points. ICU holds a set that the groups lack for 123 code points. So
+  the package ships the table as it stands.
+
+  The battery of the package holds 15,459 texts. The table gives a twin
+  for 8 of them. The other 15,435 hold a code point that the table does
+  not name, so they have no twin. The suite replays every text against
+  the table of the standard, read by the script itself.
 - The emoji sequence calls follow the files of Unicode 18.0.0, as ICU 79.1
   does. Node 22 holds Unicode 17.0.0, so it lacks 19 sequences. Nine are the
   code points U+1F6D9, U+1FA8B, U+1FA8C, U+1FA8D, U+1FACC, U+1FADD, U+1FAEB,
@@ -1084,9 +1229,8 @@ if code == unicode::OK && out[0] == -1 {
   values that the standard no longer uses, such as `E_Base`. They keep
   their positions, and no code point has them.
 - The confusable calls give the skeleton and the test of UAX #39. The
-  restriction levels, the identifier status checks and the mixed
-  script detection of the same report stay out. Only ICU holds the
-  calls, and ICU ships an older revision of the table.
+  mixed number check of the same report stays out. The invisible and
+  the hidden overlay checks stay out too. Only ICU holds those calls.
 - Only the ICU library holds the NFKC case fold as one call
   (`unorm2_getNFKCCasefoldInstance`). Python `str.casefold`, Node,
   Go and the Rust crates hold no such call. The package holds it
@@ -1166,6 +1310,20 @@ if code == unicode::OK && out[0] == -1 {
 The package parses text from people we do not know. These protections go
 beyond the reference libraries.
 
+- The restriction level calls make a fixed number of passes over the
+  code points. The set of the scripts holds three words. The last step
+  of the standard walks at most 182 script values. So the time grows in
+  step with the text.
+
+  The suite breaks one mebibyte of Latin letters and of Han ideographs.
+  It breaks one mebibyte of the Common script and of a mix of twenty
+  scripts. The suite fails a call that takes five seconds or more.
+- The lookup of the identifier profile uses a binary search over 1,650
+  ranges. So the time of one code point does not grow with the size of
+  the profile.
+- The whole script test makes two passes over the code points. It takes
+  at most 17 scripts for each code point. So a hostile text of many code points
+  cannot take quadratic time.
 - The emoji sequence calls bound the work. A whole text above 35 bytes gives
   0 or false at once, because no sequence is longer. The scan tries at most
   10 code points at each position, so its time grows in step with the text.
@@ -1328,6 +1486,7 @@ goose run examples/lookup.goose
 goose run examples/enumprops.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
+goose run examples/restrict.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the
@@ -1356,6 +1515,19 @@ its `extracted` directory.
 
 The file `test/NOTICE` names the files and the license.
 
+The script `test/mutate.sh` holds the mutation probes of the package.
+Each probe flips one rule of the package in a copy of it. The test
+program must fail after the flip. A probe runs only the group of suites
+that covers the file it changes. The variable `UNICODE_SUITES` holds the
+name of the group.
+
+A probe that its group does not catch runs the whole test program. So a
+wrong group cannot hide a missing test.
+
+```bash
+bash test/mutate.sh
+```
+
 ```bash
 cd test
 python3 make_unicode_data.py
@@ -1381,6 +1553,8 @@ python3 diff_coll.py
 python3 diff_props.py
 python3 make_casefold_data.py
 python3 make_confusable_data.py
+python3 make_restrict_data.py
+python3 restrict_battery.py
 ```
 
 The collation script reads the root collation table and the conformance
@@ -1388,6 +1562,17 @@ texts of the CLDR repository. It writes the table of the package and
 the pairs of the suite. It asks the ICU library for the sign of each
 random pair. The script `diff_coll.py` compares random pairs with the
 ICU library, the Go package, Node and the Rust `icu_collator` crate.
+
+The restriction script reads the security data of the standard. The
+release 18.0.0 holds the identifier profile. The release 8.0.0 holds the
+whole script table. The script asks the ICU library for the status of
+every code point of the profile.
+
+The script `restrict_battery.py` builds
+the texts of the battery. It asks the ICU library and the Rust crate
+`unicode-security` for their levels. It writes the levels of the
+standard into the suite. It needs the oracle of the ICU library and the
+oracle of the Rust crate.
 
 The title script checks its table against the Go library and the Rust
 `unicode-case-mapping` crate. The crate holds an older release of the

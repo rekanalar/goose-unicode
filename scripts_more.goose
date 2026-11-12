@@ -22,6 +22,10 @@ fn script_extensions(out: i64[>..]&, cp: i64) -> i64 {
 // The name of a script from its SCRIPT_ constant, such as Latin or Han.
 // A value that is no script gives Unknown.
 fn script_value_name(s: i64) -> const u8[:] {
+    if s == SCRIPT_HANB { return "Hanb"; }
+    if s == SCRIPT_JPAN { return "Jpan"; }
+    if s == SCRIPT_KORE { return "Kore"; }
+    if s == SCRIPT_HNTL { return "Hntl"; }
     if s < 0 || s + 1 >= SCRIPT_OFF.len { return SCRIPT_NAMES[0..7]; }
     return SCRIPT_NAMES[SCRIPT_OFF[s]..SCRIPT_OFF[s + 1]];
 }

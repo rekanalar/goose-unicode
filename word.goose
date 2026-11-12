@@ -41,7 +41,7 @@ fn word_props(cp: i64) -> i64 {
     // point below that has neither script.
     if cp < 0x2E80 { return p; }
     let sc = script(cp);
-    if sc == DSCRIPT_HAN || sc == DSCRIPT_HIRAGANA { return (p & ~31) | WB_CJ; }
+    if sc == SCRIPT_HAN || sc == SCRIPT_HIRAGANA { return (p & ~31) | WB_CJ; }
     return p;
 }
 
@@ -145,7 +145,7 @@ fn dict_category(cp: i64) -> bool {
     if line_break_class(cp) == LB_SA { return true; }
     if cp >= 0xAC00 && cp <= 0xD7A3 { return true; }
     let sc = script(cp);
-    if sc == DSCRIPT_HAN || sc == DSCRIPT_HIRAGANA { return true; }
+    if sc == SCRIPT_HAN || sc == SCRIPT_HIRAGANA { return true; }
     return (word_props_raw(cp) & 31) == WB_KATAKANA;
 }
 

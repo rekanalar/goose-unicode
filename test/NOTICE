@@ -9,6 +9,12 @@ The tables are built by the scripts under test/. Each script reads the
 files of the Unicode Character Database 18.0.0 and writes numbers only
 into the package.
 
+The files of the security data of the standard hold the confusable
+table and the identifier profile. The release 18.0.0 holds both. The
+whole script table comes from the release 8.0.0, because the Unicode
+Consortium stopped publishing that file after that release. The scripts
+read those files and write numbers only into the package.
+
 The files of the Character Database that the scripts read:
 
   UnicodeData.txt
@@ -39,6 +45,8 @@ The files of the Character Database that the scripts read:
   extracted/DerivedGeneralCategory.txt
   extracted/DerivedName.txt
   confusables.txt of the Unicode security data
+  IdentifierStatus.txt of the Unicode security data
+  confusablesWholeScript.txt of the Unicode security data of Unicode 8.0.0
   allkeys_CLDR.txt of the CLDR root collation, release 49
   CollationTest_CLDR_NON_IGNORABLE.txt of the same release
 

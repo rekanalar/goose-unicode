@@ -41,6 +41,18 @@ typedef void USpoofChecker;
 USpoofChecker* uspoof_open_79(int32_t* err);
 int32_t uspoof_getSkeleton_79(const USpoofChecker* sc, uint32_t type, const uint16_t* id, int32_t len, uint16_t* dest, int32_t cap, int32_t* err);
 void uspoof_close_79(USpoofChecker* sc);
+int32_t uspoof_setChecks_79(USpoofChecker* sc, int32_t checks, int32_t* err);
+typedef void USet;
+int32_t uspoof_setAllowedChars_79(USpoofChecker* sc, const USet* chars, int32_t* err);
+void* uspoof_openCheckResult_79(int32_t* err);
+void uspoof_closeCheckResult_79(void* cr);
+int32_t uspoof_getCheckResultRestrictionLevel_79(void* cr, int32_t* err);
+int32_t uspoof_check2_79(const USpoofChecker* sc, const uint16_t* id, int32_t len, void* checkResult, int32_t* err);
+int32_t uspoof_areConfusable_79(const USpoofChecker* sc, const uint16_t* id1, int32_t len1, const uint16_t* id2, int32_t len2, int32_t* err);
+int32_t uscript_getCode_79(const char* nameOrAbbr);
+USet* uset_openEmpty_79(void);
+void uset_close_79(USet* set);
+void uset_addRange_79(USet* set, int32_t start, int32_t end);
 int32_t u_getPropertyEnum_79(const char* alias);
 int8_t u_hasBinaryProperty_79(int32_t c, int32_t which);
 int8_t u_stringHasBinaryProperty_79(const uint16_t* s, int32_t length, int32_t which);
@@ -706,6 +718,176 @@ func main() {
 			if d >= 0 {
 				fmt.Fprintf(w, "%04X %d\n", int(r), int(d))
 			}
+		}
+	case "icurestrictprofile":
+		// Each input line holds the code points of one text in hex. The
+		// output holds the restriction level of the text from the ICU
+		// library, under the identifier profile. The profile holds the
+		// code points whose Identifier_Status is Allowed. The input holds
+		// the ranges of the profile after the text, one per line, and a
+		// line of a single zero ends the input.
+		var st C.int32_t
+		sc := C.uspoof_open_79(&st)
+		if st != 0 {
+			fmt.Fprintln(w, "open error")
+			break
+		}
+		defer C.uspoof_close_79(sc)
+		err := C.int32_t(0)
+		C.uspoof_setChecks_79(sc, 16, &err)
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		// The first argument names the file of the ranges of the profile.
+		// Each line holds one range of code points in hex.
+		profile := C.uset_openEmpty_79()
+		if len(os.Args) > 2 {
+			body, err2 := os.ReadFile(os.Args[2])
+			if err2 != nil {
+				fmt.Fprintln(w, "profile error")
+				break
+			}
+			for _, line := range strings.Split(string(body), "\n") {
+				line = strings.TrimSpace(line)
+				if line == "" {
+					continue
+				}
+				lo, hi, ok := strings.Cut(line, "..")
+				var a, b rune
+				fmt.Sscanf(lo, "%X", &a)
+				if ok {
+					fmt.Sscanf(hi, "%X", &b)
+				} else {
+					b = a
+				}
+				C.uset_addRange_79(profile, C.int32_t(a), C.int32_t(b))
+			}
+		}
+		C.uspoof_setAllowedChars_79(sc, profile, &err)
+		C.uset_close_79(profile)
+		for lines.Scan() {
+			var units []uint16
+			for _, f := range strings.Fields(lines.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				for _, u := range utf16.Encode([]rune{v}) {
+					units = append(units, u)
+				}
+			}
+			cr := C.uspoof_openCheckResult_79(&err)
+			var id *C.uint16_t
+			if len(units) > 0 {
+				id = (*C.uint16_t)(unsafe.Pointer(&units[0]))
+			}
+			C.uspoof_check2_79(sc, id, C.int32_t(len(units)), cr, &err)
+			if err != 0 {
+				fmt.Fprintln(w, "error")
+				C.uspoof_closeCheckResult_79(cr)
+				continue
+			}
+			level := C.uspoof_getCheckResultRestrictionLevel_79(cr, &err)
+			C.uspoof_closeCheckResult_79(cr)
+			fmt.Fprintf(w, "%08X\n", uint32(level))
+		}
+	case "icurestrict":
+		// Each input line holds the code points of one text in hex. The
+		// output holds the restriction level of the text from the ICU
+		// library. The level of a text of no code point is the level of
+		// the empty text.
+		var st C.int32_t
+		sc := C.uspoof_open_79(&st)
+		if st != 0 {
+			fmt.Fprintln(w, "open error")
+			break
+		}
+		defer C.uspoof_close_79(sc)
+		err := C.int32_t(0)
+		C.uspoof_setChecks_79(sc, 16, &err)
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for lines.Scan() {
+			var units []uint16
+			for _, f := range strings.Fields(lines.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				for _, u := range utf16.Encode([]rune{v}) {
+					units = append(units, u)
+				}
+			}
+			cr := C.uspoof_openCheckResult_79(&err)
+			var id *C.uint16_t
+			if len(units) > 0 {
+				id = (*C.uint16_t)(unsafe.Pointer(&units[0]))
+			}
+			C.uspoof_check2_79(sc, id, C.int32_t(len(units)), cr, &err)
+			if err != 0 {
+				fmt.Fprintln(w, "error")
+				C.uspoof_closeCheckResult_79(cr)
+				continue
+			}
+			level := C.uspoof_getCheckResultRestrictionLevel_79(cr, &err)
+			C.uspoof_closeCheckResult_79(cr)
+			fmt.Fprintf(w, "%08X\n", uint32(level))
+		}
+	case "icurestrictflag":
+		// Each input line holds two texts in hex code points, separated
+		// by a bar. The output holds the confusable flags of the pair
+		// from the ICU library.
+		var st C.int32_t
+		sc := C.uspoof_open_79(&st)
+		if st != 0 {
+			fmt.Fprintln(w, "open error")
+			break
+		}
+		defer C.uspoof_close_79(sc)
+		err := C.int32_t(0)
+		C.uspoof_setChecks_79(sc, 7, &err)
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for lines.Scan() {
+			body, second, _ := strings.Cut(lines.Text(), "|")
+			units := func(text string) []uint16 {
+				var out []uint16
+				for _, f := range strings.Fields(text) {
+					var v rune
+					fmt.Sscanf(f, "%X", &v)
+					for _, u := range utf16.Encode([]rune{v}) {
+						out = append(out, u)
+					}
+				}
+				return out
+			}
+			a := units(body)
+			b := units(second)
+			var pa, pb *C.uint16_t
+			if len(a) > 0 {
+				pa = (*C.uint16_t)(unsafe.Pointer(&a[0]))
+			}
+			if len(b) > 0 {
+				pb = (*C.uint16_t)(unsafe.Pointer(&b[0]))
+			}
+			flags := C.uspoof_areConfusable_79(sc, pa, C.int32_t(len(a)),
+				pb, C.int32_t(len(b)), &err)
+			if err != 0 {
+				fmt.Fprintln(w, "error")
+				continue
+			}
+			fmt.Fprintf(w, "%d\n", int(flags))
+		}
+	case "icuidstatus":
+		// Each input line holds one code point in hex. The output holds
+		// the Identifier_Status of the code point from the ICU library.
+		// The value 1 is Allowed and the value 0 is Restricted.
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<20), 1<<20)
+		w.Flush()
+		for lines.Scan() {
+			var v rune
+			fmt.Sscanf(strings.TrimSpace(lines.Text()), "%X", &v)
+			value := C.u_getIntPropertyValue_79(C.int32_t(v), 0x1019)
+			fmt.Fprintf(w, "%04X %d\n", int(v), int(value))
 		}
 	case "icescriptext":
 		// The runs of the script extensions of every code point. The value

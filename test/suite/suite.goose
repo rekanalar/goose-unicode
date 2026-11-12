@@ -65,3 +65,5 @@ import lossy_cases;
 import lossy_suite;
 import emoji_seq_cases;
 import emoji_seq_suite;
+import restrict_cases;
+import restrict_suite;

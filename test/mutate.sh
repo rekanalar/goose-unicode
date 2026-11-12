@@ -3,6 +3,11 @@
 # package in a copy of it. The test program must fail after the flip.
 # The probes prove that the test program checks the rule.
 #
+# A probe runs only the group of suites that covers the file it changes.
+# The variable UNICODE_SUITES holds the name of the group. A probe that
+# the group does not catch runs the whole test program, so a wrong group
+# cannot hide a missing test.
+#
 # Usage: bash test/mutate.sh [goose binary]
 set -uo pipefail
 
@@ -15,10 +20,31 @@ trap 'rm -rf "$work"' EXIT
 fails=0
 probes=0
 
+# The groups of suites that cover a file. The group names the suites
+# that hold the calls of the file. A probe of that file runs only them.
+# A file may name more than one group. The probe stops at the first
+# group that catches the change.
+groups_for() {
+    case "$1" in
+        utf8.goose) echo "utf8" ;;
+        norm.goose) echo "norm" ;;
+        casing.goose) echo "case" ;;
+        property.goose) echo "property norm" ;;
+        grapheme.goose) echo "grapheme" ;;
+        props.goose) echo "props" ;;
+        case_full.goose) echo "case_full" ;;
+        test/suite/props_suite.goose) echo "props" ;;
+        restrict.goose) echo "restrict" ;;
+        *) echo "" ;;
+    esac
+}
+
 # run_probe <name> <file> <old text> <new text>
 run_probe() {
     local name="$1" file="$2" old="$3" new="$4"
     local copy="$work/$name"
+    local groups
+    groups="$(groups_for "$file")"
     probes=$((probes + 1))
     rm -rf "$copy"
     cp -r "$pkg" "$copy"
@@ -35,15 +61,26 @@ if old not in text:
     sys.exit(1)
 open(path, "w", encoding="utf-8").write(text.replace(old, new, 1))
 PY
-    local out
-    out="$(cd "$copy" && "$goose_bin" run test/run.goose 2>&1)"
-    local code=$?
+    local code group
+    for group in $groups; do
+        (cd "$copy" && UNICODE_SUITES="$group" "$goose_bin" run test/run.goose >/dev/null 2>&1)
+        code=$?
+        if [ "$code" -ne 0 ]; then
+            echo "ok: the probe $name made the test program fail"
+            return
+        fi
+    done
+    # No group of the file caught the change. The whole test program
+    # runs, so a wrong group cannot hide a missing test.
+    (cd "$copy" && "$goose_bin" run test/run.goose >/dev/null 2>&1)
+    code=$?
     if [ "$code" -eq 0 ]; then
         echo "FAIL: the probe $name left the test program green"
         fails=$((fails + 1))
         return
     fi
-    echo "ok: the probe $name made the test program fail"
+    echo "NEEDS THE FULL SUITE $name: the groups $groups do not catch it"
+    fails=$((fails + 1))
 }
 
 # The decoder. A bad byte must give the fault.
@@ -60,7 +97,7 @@ run_probe decode_limit utf8.goose \
     'if b0 < 0xC0 || b0 > 0xF4 { return -1, 1; }'
 
 run_probe encode_surrogate utf8.goose \
-    'return cp >= 0 && cp <= 0x10FFFF && !(cp >= 0xD800 && cp <= 0xDFFF);' \
+    'return cp >= 0 && cp <= 0x10FFFF && !utf16_is_surrogate(cp);' \
     'return cp >= 0 && cp <= 0x10FFFF;'
 
 # The input bound. A long input must give the fault.
@@ -179,8 +216,8 @@ run_probe full_case case_full.goose \
 
 # The final sigma. A sigma with no cased letter after it is final.
 run_probe final_sigma case_full.goose \
-    'return !cased_after;' \
-    'return cased_after;'
+    'return !cased_follows(s, i + n);' \
+    'return cased_follows(s, i + n);'
 
 # The input bound of the full case calls.
 run_probe full_input_bound case_full.goose \
@@ -192,6 +229,61 @@ run_probe full_input_bound case_full.goose \
 run_probe full_output_bound case_full.goose \
     'if out.len > MAX_OUTPUT {' \
     'if out.len > 8 {'
+
+# The restriction level. The level of a text of one script is Single
+# Script.
+run_probe restrict_single restrict.goose \
+    'if !set_is_empty(all) { return RESTRICT_SINGLE; }' \
+    'if false { return RESTRICT_SINGLE; }'
+
+# The restriction level. The level of a text of ASCII is ASCII-Only.
+run_probe restrict_ascii restrict.goose \
+    'if ascii_only { return RESTRICT_ASCII; }' \
+    'if false { return RESTRICT_ASCII; }'
+
+# The restriction level. A code point outside the profile gives
+# Unrestricted.
+run_probe restrict_profile restrict.goose \
+    'if !profile_allows(cps[k], profile) { return RESTRICT_UNRESTRICTED; }' \
+    'if false { return RESTRICT_UNRESTRICTED; }'
+
+# The restriction level. The Hntl rule of the standard adds the writing
+# system Hntl to Latin.
+run_probe restrict_hntl restrict.goose \
+    'if set_has(s, SCRIPT_LATIN) {
+        set_add(s, SCRIPT_HNTL);
+    }' \
+    'if false {
+        set_add(s, SCRIPT_HNTL);
+    }'
+
+# The restriction level. The rule of step 7 asks for a Recommended
+# script. The table holds the scripts of Table 5 of UAX #31. The probe
+# takes Devanagari out of the table, so a text of Latin and Devanagari
+# no longer gives the level Moderately Restrictive.
+run_probe restrict_recommended restrict.goose \
+    'if v == 11 { return true; }            // Devanagari' \
+    'if v == 33 { return true; }            // Devanagari'
+
+# The restriction level. The rule of step 6 asks for a writing system.
+run_probe restrict_writing_system restrict.goose \
+    'if set_has(no_latin, SCRIPT_KORE) || set_has(no_latin, SCRIPT_HANB)
+        || set_has(no_latin, SCRIPT_JPAN) {' \
+    'if false {'
+
+# The whole script test. A code point with no row of the table has no
+# confusable.
+run_probe restrict_whole_script restrict.goose \
+    'if i < 0 { return; }' \
+    'if i < 0 { out = set_all(); return; }'
+
+# The confusable flags. The set of every script does not meet the empty
+# set of a text that mixes scripts.
+run_probe restrict_kinds_all restrict.goose \
+    '    if !set_is_empty(set_and(set_a, set_b)) {
+        mask |= CONF_SINGLE;' \
+    '    if set_is_all(set_a) || set_is_all(set_b) || !set_is_empty(set_and(set_a, set_b)) {
+        mask |= CONF_SINGLE;'
 
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi

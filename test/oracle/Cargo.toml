@@ -5,6 +5,8 @@ edition = "2021"
 publish = false
 
 [dependencies]
+unicode-security = "0.1.3"
+unicode-script = "0.5"
 unicode-width = "0.2.3"
 unicode-bidi = "0.3.18"
 unicode-case-mapping = "1.0.0"
@@ -52,6 +54,10 @@ path = "lineseg.rs"
 [[bin]]
 name = "lossy"
 path = "lossy.rs"
+
+[[bin]]
+name = "restrict"
+path = "restrict.rs"
 
 [[bin]]
 name = "sent"

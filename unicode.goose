@@ -69,6 +69,8 @@ import dict_engine;
 import dict_cj;
 import emoji_seq_data;
 import emoji_seq;
+import restrict_data;
+import restrict;
 
 // The Unicode version of the tables.
 const UNICODE_VERSION: u8[] = "18.0.0";
@@ -185,6 +187,20 @@ const SB_BAD: i64 = 15;    // a malformed byte; no table holds it
 const SCRIPT_UNKNOWN: i64 = 0;    // the code point is outside the range of the standard
 const SCRIPT_COMMON: i64 = 1;     // the code point belongs to no script
 const SCRIPT_INHERITED: i64 = 2;  // the code point takes the script around it
+
+// The scripts that the rules of the standard name.
+const SCRIPT_LATIN: i64 = 3;
+const SCRIPT_GREEK: i64 = 4;
+const SCRIPT_CYRILLIC: i64 = 5;
+const SCRIPT_THAI: i64 = 21;
+const SCRIPT_LAO: i64 = 22;
+const SCRIPT_MYANMAR: i64 = 24;
+const SCRIPT_HANGUL: i64 = 26;
+const SCRIPT_KHMER: i64 = 32;
+const SCRIPT_HIRAGANA: i64 = 34;
+const SCRIPT_KATAKANA: i64 = 35;
+const SCRIPT_BOPOMOFO: i64 = 36;
+const SCRIPT_HAN: i64 = 37;
 
 // ---- Groups of the general category -----------------------------------
 const GROUP_LETTER: i64 = 0;       // Lu, Ll, Lt, Lm, Lo

@@ -17,15 +17,6 @@ const THAI_MIN_WORD_SPAN: i64 = 5;
 const PLAIN_ROOT_COMBINE_THRESHOLD: i64 = 3;
 const PLAIN_PREFIX_COMBINE_THRESHOLD: i64 = 3;
 
-// The scripts that hold an engine, as SCRIPT_ values of the tables.
-const DSCRIPT_THAI: i64 = 21;
-const DSCRIPT_LAO: i64 = 22;
-const DSCRIPT_MYANMAR: i64 = 24;
-const DSCRIPT_KHMER: i64 = 32;
-const DSCRIPT_HIRAGANA: i64 = 34;
-const DSCRIPT_KATAKANA: i64 = 35;
-const DSCRIPT_HAN: i64 = 37;
-
 // One candidate list of the plain walk: the words that start at one index.
 struct PossibleWord {
     offset: i64,   // the index of the candidates, -1 when the list is empty
@@ -38,17 +29,17 @@ struct PossibleWord {
 fn dict_plain_of(cp: i64) -> i64 {
     if line_break_class(cp) != LB_SA { return -1; }
     let sc = script(cp);
-    if sc == DSCRIPT_THAI { return DICT_THAI; }
-    if sc == DSCRIPT_LAO { return DICT_LAO; }
-    if sc == DSCRIPT_MYANMAR { return DICT_BURMESE; }
-    if sc == DSCRIPT_KHMER { return DICT_KHMER; }
+    if sc == SCRIPT_THAI { return DICT_THAI; }
+    if sc == SCRIPT_LAO { return DICT_LAO; }
+    if sc == SCRIPT_MYANMAR { return DICT_BURMESE; }
+    if sc == SCRIPT_KHMER { return DICT_KHMER; }
     return -1;
 }
 
 // True when the code point has the script of Han, Hiragana or Katakana.
 fn dict_cj_own(cp: i64) -> bool {
     let sc = script(cp);
-    return sc == DSCRIPT_HAN || sc == DSCRIPT_HIRAGANA || sc == DSCRIPT_KATAKANA;
+    return sc == SCRIPT_HAN || sc == SCRIPT_HIRAGANA || sc == SCRIPT_KATAKANA;
 }
 
 // True when the code point belongs to the Han, Hiragana or Katakana set of
