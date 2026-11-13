@@ -37,6 +37,9 @@ groups_for() {
         restrict.goose) echo "restrict" ;;
         bidi.goose) echo "bidi_line bidi" ;;
         bidi_line.goose) echo "bidi_line" ;;
+        lstm.goose) echo "lstm" ;;
+        word.goose) echo "lstm segment dict" ;;
+        linebreak.goose) echo "lstm line_dict" ;;
         *) echo "" ;;
     esac
 }
@@ -362,6 +365,32 @@ run_probe bidi_line_resolve_clear bidi_line.goose \
     '        offs.clear();
         return code, off;' \
     '        return code, off;'
+
+# The model engine. Each probe flips one rule of lstm.goose.
+run_probe lstm_argmax_last lstm.goose \
+    'if v[k] > v[best] { best = k; }' \
+    'if v[k] >= v[best] { best = k; }'
+run_probe lstm_min_span lstm.goose \
+    'const LSTM_MIN_SPAN: i64 = 5;' \
+    'const LSTM_MIN_SPAN: i64 = 4;'
+run_probe lstm_forward_row lstm.goose \
+    'sum = sum + fwd[j] * LSTM_VALS[base + ow + j * 4 + i2];' \
+    'sum = sum + 0.0 * LSTM_VALS[base + ow + j * 4 + i2];'
+run_probe lstm_backward_start lstm.goose \
+    'if i != nc - 1 {' \
+    'if i != nc - 2 {'
+run_probe lstm_first_break lstm.goose \
+    'if (best == 0 || best == 3) && i != 0 {' \
+    'if (best == 0 || best == 3) {'
+run_probe lstm_single_class lstm.goose \
+    'if (best == 0 || best == 3) && i != 0 {' \
+    'if (best == 0) && i != 0 {'
+run_probe lstm_cluster_limit lstm.goose \
+    'if units.len > LSTM_MAX_CLUSTER { return; }' \
+    'if units.len > 40 { return; }'
+run_probe lstm_model_input lstm.goose \
+    'if engine == SEG_MODEL && n > MAX_MODEL_INPUT { return ERR_TOO_LONG; }' \
+    'if engine == SEG_MODEL && n > 1000000000 { return ERR_TOO_LONG; }'
 
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi

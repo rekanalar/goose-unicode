@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.29.0";
+import unicode from "rekanalar/goose-unicode@v0.30.0";
 ```
 
 ## API
@@ -136,6 +136,10 @@ import unicode from "rekanalar/goose-unicode@v0.29.0";
 | `word_count(s)` | the number of word segments, the spaces and the punctuation too |
 | `word_offsets(out, s)` | copies the start offset of every word segment into the buffer of the caller |
 | `word_next_cached(cache, s, at)` | the end of the word segment at the byte offset, for a walk of many calls over one text; each rule segment is read once |
+| `word_next_with(s, at, engine)` | `word_next` with an engine: `SEG_DICTIONARY` or `SEG_MODEL` |
+| `word_count_with(s, engine)` | `word_count` with an engine |
+| `word_offsets_with(out, s, engine)` | `word_offsets` with an engine |
+| `word_next_cached_with(cache, s, at, engine)` | `word_next_cached` with an engine |
 | `is_word_like(s, start, end)` | true when the segment holds a letter, a number or an ideograph |
 | `is_word_like_checked(s, start, end)` | the same, with a fault code: `ERR_BAD_ARG` for a bad range and `ERR_TOO_LONG` above `MAX_INPUT` |
 | `sentence_next(s, at)` | the end of the sentence that starts at the byte offset; gives the code and the end |
@@ -157,6 +161,7 @@ import unicode from "rekanalar/goose-unicode@v0.29.0";
 | `vertical_orientation_name(cp)` | the short name of that value, such as `LE` or `Virama` |
 | `line_breaks(out, s)` | the break opportunities of the text by rules LB1 to LB31, with a break at each dictionary word end of a Thai, Lao, Khmer or Burmese run; gives the code and the offset of the first bad byte |
 | `line_breaks_style(out, s, style)` | the break opportunities of the text for one style: `LINE_STYLE_STRICT`, `LINE_STYLE_NORMAL` or `LINE_STYLE_LOOSE` |
+| `line_breaks_with(out, s, style, engine)` | `line_breaks_style` with an engine |
 | `sentence_offsets(out, s)` | copies the start offset of every sentence into the buffer of the caller |
 | `sentence_offsets_locale(out, s, locale)` | the same, but the break after an abbreviation of the locale is held |
 | `sentence_locale_of(tag)` | the locale constant of a language tag, such as "en" or "de-DE" |
@@ -862,6 +867,38 @@ alone gets no added break. The Han, Hiragana and Katakana breaks come
 from the rules, as in the ICU root line style. The ICU line style
 `phrase` uses a dictionary for them, and the package has no such style.
 
+### The model engine for Thai and Burmese
+
+The word and line calls split a run of Thai or Burmese with a word list.
+ICU 79.1 and Node 22 do the same by default. ICU also holds a neural
+model for each of the two scripts. Pass `SEG_MODEL` to a call with the
+`_with` suffix to use the model. The default stays `SEG_DICTIONARY`.
+
+The model is the default model of ICU 79.1 for each script:
+`Thai_graphclust_model4_heavy` and `Burmese_graphclust_model5_heavy`.
+The package holds the model weights as exact 32-bit floats in a
+generated file. Word and line breaks equal ICU built with those models
+on 9,000 Thai texts and 9,000 Burmese texts. The test covers three
+seeds. Every text gives the same breaks in the package and in ICU.
+
+The dictionary engine of ICU 79.1 and Node 22 differ from the models in
+most texts. Of 9,000 Thai texts, the dictionary agrees with the model in
+347. Of 9,000 Burmese texts, it agrees in 182. Node 22 agrees with the
+dictionary of the package in every text.
+
+Lao and Khmer stay on the dictionary, because the package holds no model
+for them.
+
+A run needs five code points. A shorter run gets no model break. A
+grapheme cluster of more than 10 UTF-16 units stops the model for its
+run. The model costs about 53 microseconds for each Thai code point. A
+model call refuses a text of more than 65,536 bytes with `ERR_TOO_LONG`.
+
+Rust `icu_segmenter` `new_auto` and `new_lstm` use their own models.
+They agree with the model of ICU in 405 of 9,000 Thai texts and in 313 of
+9,000 Burmese texts. They use another model file, so they give other
+breaks.
+
 ### The styles of a line break
 
 The ICU library holds three line styles. The strict style is the style of
@@ -1079,6 +1116,15 @@ if code == unicode::OK && out[0] == -1 {
 ```
 
 ## Limits
+
+- The model engine of the word and line calls covers Thai and Burmese only.
+  Lao and Khmer stay on the dictionary, because the package holds no model
+  for them. A model call refuses a text of more than 65,536 bytes with
+  `ERR_TOO_LONG`. A run of fewer than five code points gets no model
+  break. A run with a grapheme cluster of more than 10 UTF-16 units gets
+  none either.
+
+  The model engine is not the default. Pass `SEG_MODEL` to choose it.
 
 - The restriction level calls follow the revision 34 of UTS #39. Two classes
   of text give another level in the ICU library 79.1 and in the Rust crate
@@ -1378,6 +1424,19 @@ if code == unicode::OK && out[0] == -1 {
 The package parses text from people we do not know. These protections go
 beyond the reference libraries.
 
+- The model engine bounds its work.
+  A call keeps one row of hidden values
+  for each grapheme cluster. So the memory grows in step with the text.
+  The input limit of 65,536 bytes keeps the time of a call near one
+  second. ICU has no such limit and needs 18.5 seconds for one mebibyte.
+
+  The suite runs 64 KiB texts of Thai, Burmese and a mix. Each call
+  ends in under five seconds.
+- The decoder of the model data checks the header and every string
+  length. It also checks the count of floats before it reads a value. A
+  bad data string gives no model.
+- The exponential and the tangent use only basic IEEE 754 operations.
+  So the answer does not depend on the platform.
 - The restriction level calls make a fixed number of passes over the
   code points. The set of the scripts holds three words. The last step
   of the standard walks at most 182 script values. So the time grows in
@@ -1542,6 +1601,10 @@ These risks stay.
 
 ## Test
 
+The suite of the package holds the cases of the model engine. The script
+`test/make_lstm_cases.py` writes them. The script `test/lstm_battery.py`
+compares the package with ICU, Node and Rust on seeded texts.
+
 ```bash
 goose run test/run.goose
 goose run examples/normalize.goose
@@ -1569,6 +1632,7 @@ goose run examples/enumprops.goose
 goose run examples/chars.goose
 goose run examples/scripts.goose
 goose run examples/restrict.goose
+goose run examples/lstm_words.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the

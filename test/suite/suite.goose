@@ -70,3 +70,4 @@ import restrict_cases;
 import restrict_suite;
 import bidi_line_cases;
 import bidi_line_suite;
+import lstm_suite;

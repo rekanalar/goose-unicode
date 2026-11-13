@@ -66,6 +66,8 @@ import dict_data_burmese;
 import dict_data_khmer;
 import dict_data_cj;
 import dict_match;
+import lstm_data;
+import lstm;
 import dict_engine;
 import dict_cj;
 import emoji_seq_data;
@@ -88,6 +90,15 @@ const ERR_BAD_UTF32: i64 = 7;      // the bytes are not well formed UTF-32
 
 // ---- bounds ---------------------------------------------------------
 const MAX_INPUT: i64 = 1048576;    // bytes of input
+
+// The engine of a run of Thai or Burmese code points.
+const SEG_DICTIONARY: i64 = 0;  // the word lists of ICU
+const SEG_MODEL: i64 = 1;        // the LSTM models of ICU
+
+// The longest text in bytes for the model engine. The model needs about
+// 53 microseconds for each Thai code point. The limit keeps a call
+// under a few seconds.
+const MAX_MODEL_INPUT: i64 = 65536;
 const MAX_OUTPUT: i64 = 4194304;   // bytes of result
 
 // ---- normalization forms --------------------------------------------

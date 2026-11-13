@@ -109,7 +109,7 @@ fn to_title_locale(out: u8[>..]&, s: const u8[:], locale: i64) -> i64, i64 {
     if !locale_ok(locale) { return ERR_BAD_ARG, -1; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
     var br: i64[>..] = [];
-    let bcode = word_all_breaks(br, s);
+    let bcode = word_all_breaks(br, s, SEG_DICTIONARY);
     if bcode != OK { return bcode, -1; }
     var at: i64 = 0;
     var k: i64 = 0;

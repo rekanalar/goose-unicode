@@ -156,7 +156,8 @@ fn dict_category(cp: i64) -> bool {
 // engine of its own ends the run that it starts. When cjk is false, only
 // the scripts of the line break class SA have an engine: the Han,
 // Hiragana and Katakana code points go to none.
-fn engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64, cjk: bool) {
+fn engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64, cjk: bool,
+                 engine: i64) {
     // Every code point of a script with an engine starts with a byte of
     // 0xE0 or above, so a segment without such a byte needs no engine.
     var high: bool = false;
@@ -187,7 +188,11 @@ fn engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64, cjk: bool) {
             let start = j;
             var k = j + 1;
             while k < c.len && dict_plain_of(c[k]) == t { k += 1; }
-            dict_plain(t, c[start..k], off[start..k + 1], out);
+            if engine == SEG_MODEL && (t == DICT_THAI || t == DICT_BURMESE) {
+                lstm_breaks(t, c[start..k], off[start..k + 1], out);
+            } else {
+                dict_plain(t, c[start..k], off[start..k + 1], out);
+            }
             j = k;
         } else if cjk && (dict_cj_own(c[j]) || c[j] == 0x30FC || c[j] == 0xFF70
             || c[j] == 0xFF9E || c[j] == 0xFF9F) {
@@ -211,14 +216,16 @@ fn engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64, cjk: bool) {
 
 // The dictionary breaks of the word split inside the rule segment
 // [at, end).
-fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
-    engine_breaks(out, s, at, end, true);
+fn word_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64,
+                       engine: i64) {
+    engine_breaks(out, s, at, end, true, engine);
 }
 
 // The dictionary breaks of the line split inside the rule segment
 // [at, end). Only the scripts of the line break class SA have an engine.
-fn line_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64) {
-    engine_breaks(out, s, at, end, false);
+fn line_engine_breaks(out: i64[>..]&, s: const u8[:], at: i64, end: i64,
+                       engine: i64) {
+    engine_breaks(out, s, at, end, false, engine);
 }
 
 // True when the code point belongs to an engine run. kind is 0 for a
@@ -267,6 +274,20 @@ fn word_run_span(s: const u8[:], at: i64, kind: i64, trie: i64) -> i64, i64 {
 // from the split of a walk from the start. The cost of a call inside a
 // run grows with the part of the run before at.
 fn word_next(s: const u8[:], at: i64) -> i64, i64 {
+    return word_next_with(s, at, SEG_DICTIONARY);
+}
+
+// The end of the word segment that starts at the byte offset at, with
+// the engine of the caller. The engine is SEG_DICTIONARY or SEG_MODEL.
+// The result is a fault code and the end, as for word_next.
+//
+// With SEG_MODEL each call runs the model on the whole run that holds
+// at, from the start of the run. The cost of a call is therefore the
+// cost of the run. A caller that walks a text uses
+// word_next_cached_with, or word_offsets_with for all the offsets.
+fn word_next_with(s: const u8[:], at: i64, engine: i64) -> i64, i64 {
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { return fault, at; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, at; }
     if at < 0 || at >= s.len { return ERR_BAD_ARG, at; }
     let cp0, n0 = decode_at(s, at);
@@ -314,7 +335,7 @@ fn word_next(s: const u8[:], at: i64) -> i64, i64 {
     // The base of the run is at or below at, so the rules start at at.
     let end = word_rule_seg(s, at);
     var br: i64[>..] = [];
-    word_engine_breaks(br, s, base, end);
+    word_engine_breaks(br, s, base, end, engine);
     for k in 0..br.len {
         if br[k] > at { return OK, br[k]; }
     }
@@ -325,7 +346,7 @@ fn word_next(s: const u8[:], at: i64) -> i64, i64 {
 // of the text. out is cleared first. Every rule segment is found once
 // and every engine run spans the whole text, so the splits match the
 // splits of a left to right walk over the whole text.
-fn word_all_breaks(out: i64[>..]&, s: const u8[:]) -> i64 {
+fn word_all_breaks(out: i64[>..]&, s: const u8[:], engine: i64) -> i64 {
     out.clear();
     if s.len > MAX_INPUT { return ERR_TOO_LONG; }
     var br: i64[>..] = [];
@@ -333,7 +354,7 @@ fn word_all_breaks(out: i64[>..]&, s: const u8[:]) -> i64 {
     while at < s.len {
         let end = word_rule_seg(s, at);
         br.clear();
-        word_engine_breaks(br, s, at, end);
+        word_engine_breaks(br, s, at, end, engine);
         for k in 0..br.len { out.push(br[k]); }
         if end < s.len { out.push(end); }
         at = end;
@@ -344,8 +365,16 @@ fn word_all_breaks(out: i64[>..]&, s: const u8[:]) -> i64 {
 // Counts the segments of s, the spaces and the punctuation too. Returns a
 // fault code and the count.
 fn word_count(s: const u8[:]) -> i64, i64 {
+    return word_count_with(s, SEG_DICTIONARY);
+}
+
+// The count of the segments of s, with the engine of the caller. The
+// result is a fault code and the count, as for word_count.
+fn word_count_with(s: const u8[:], engine: i64) -> i64, i64 {
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { return fault, 0; }
     var br: i64[>..] = [];
-    let code = word_all_breaks(br, s);
+    let code = word_all_breaks(br, s, engine);
     if code != OK { return code, 0; }
     if s.len == 0 { return OK, 0; }
     return OK, br.len + 1;
@@ -354,9 +383,17 @@ fn word_count(s: const u8[:]) -> i64, i64 {
 // Writes the start offset of every segment of s to out. out is cleared
 // first.
 fn word_offsets(out: i64[>..]&, s: const u8[:]) -> i64 {
+    return word_offsets_with(out, s, SEG_DICTIONARY);
+}
+
+// The start offset of every segment of s, with the engine of the
+// caller. The result is a fault code, as for word_offsets.
+fn word_offsets_with(out: i64[>..]&, s: const u8[:], engine: i64) -> i64 {
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { out.clear(); return fault; }
     if s.len > MAX_INPUT { out.clear(); return ERR_TOO_LONG; }
     var br: i64[>..] = [];
-    let code = word_all_breaks(br, s);
+    let code = word_all_breaks(br, s, engine);
     if code != OK { out.clear(); return code; }
     out.clear();
     if br.len == 0 && s.len == 0 { return OK; }
@@ -406,6 +443,17 @@ fn is_word_like_checked(s: const u8[:], start: i64, end: i64) -> i64, bool {
 // result is a fault code and the end, as for word_next. A fault leaves
 // the cache as it is.
 fn word_next_cached(cache: i64[>..]&, s: const u8[:], at: i64) -> i64, i64 {
+    return word_next_cached_with(cache, s, at, SEG_DICTIONARY);
+}
+
+// The end of the segment at at, for a walk of many calls, with the
+// engine of the caller. One cache serves one text and one engine. A
+// cache that a call with another engine filled gives wrong ends. The
+// result is a fault code and the end, as for word_next_cached.
+fn word_next_cached_with(cache: i64[>..]&, s: const u8[:], at: i64,
+                          engine: i64) -> i64, i64 {
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { return fault, at; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, at; }
     if at < 0 || at >= s.len { return ERR_BAD_ARG, at; }
     // The cache holds the length of the text, the start and the end of the
@@ -413,7 +461,7 @@ fn word_next_cached(cache: i64[>..]&, s: const u8[:], at: i64) -> i64, i64 {
     if cache.len < 3 || cache[0] != s.len || at < cache[1] || at >= cache[2] {
         let end = word_rule_seg(s, at);
         var br: i64[>..] = [];
-        word_engine_breaks(br, s, at, end);
+        word_engine_breaks(br, s, at, end, engine);
         cache.clear();
         cache.push(s.len);
         cache.push(at);

@@ -314,12 +314,36 @@ fn line_breaks(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
     return line_breaks_style(out, s, LINE_STYLE_STRICT);
 }
 
+// Writes the break opportunities of s to out, for one style and one
+// engine. The engine is SEG_DICTIONARY or SEG_MODEL. The result is a
+// fault code and the offset of a bad byte, or -1, as for
+// line_breaks_style.
+fn line_breaks_with(out: i64[>..]&, s: const u8[:], style: i64,
+                     engine: i64) -> i64, i64 {
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { out.clear(); return fault, -1; }
+    return line_breaks_style(out, s, style, engine);
+}
+
 // Writes the break opportunities of s to out, for one style. The styles
 // are the constants LINE_STYLE_STRICT, LINE_STYLE_NORMAL and
 // LINE_STYLE_LOOSE. The strict style gives the breaks of the plain
 // call. A style outside the known values gives the strict style.
 fn line_breaks_style(out: i64[>..]&, s: const u8[:], style: i64) -> i64, i64 {
+    return line_breaks_style(out, s, style, SEG_DICTIONARY);
+}
+
+// Writes the break opportunities of s to out, for one style and one
+// engine. The styles are the constants LINE_STYLE_STRICT,
+// LINE_STYLE_NORMAL and LINE_STYLE_LOOSE. A style outside the known
+// values gives the strict style. The engine is SEG_DICTIONARY or
+// SEG_MODEL. The result is a fault code and the offset of a bad byte,
+// or -1.
+fn line_breaks_style(out: i64[>..]&, s: const u8[:], style: i64,
+                      engine: i64) -> i64, i64 {
     out.clear();
+    let fault = engine_fault(engine, s.len);
+    if fault != OK { return fault, 0; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
     var st = style;
     if st < LINE_STYLE_STRICT || st > LINE_STYLE_LOOSE { st = LINE_STYLE_STRICT; }
@@ -365,7 +389,7 @@ fn line_breaks_style(out: i64[>..]&, s: const u8[:], style: i64) -> i64, i64 {
         lb_advance(units[..], k, st);
     }
     if units.len > 0 { out.push(s.len * 2 + BREAK_MANDATORY); }
-    line_dictionary_pass(out, s);
+    line_dictionary_pass(out, s, engine);
     return OK, 0;
 }
 
@@ -387,7 +411,7 @@ fn line_has_sa(s: const u8[:], at: i64, end: i64) -> bool {
 // to the dictionary engine of the script. The engine adds soft breaks
 // inside the runs. A rule break stays as it is, and the flag of a
 // mandatory break stays too. The text is valid UTF-8 at this point.
-fn line_dictionary_pass(out: i64[>..]&, s: const u8[:]) {
+fn line_dictionary_pass(out: i64[>..]&, s: const u8[:], engine: i64) {
     var high = false;
     for k in 0..s.len {
         if s[k] >= 0xE0 { high = true; break; }
@@ -401,7 +425,7 @@ fn line_dictionary_pass(out: i64[>..]&, s: const u8[:]) {
         let end = out[k] >> 1;
         if line_has_sa(s, at, end) {
             inner.clear();
-            line_engine_breaks(inner, s, at, end);
+            line_engine_breaks(inner, s, at, end, engine);
             for m in 0..inner.len { merged.push(inner[m] * 2); added = true; }
         }
         merged.push(out[k]);

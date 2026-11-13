@@ -103,6 +103,7 @@ fn run_group(name: const u8[:]) -> i64 {
     if every || name == "lossy" { bad += suite::run_lossy(); ran += 1; }
     if every || name == "emoji_seq" { bad += suite::run_emoji_seq(); ran += 1; }
     if every || name == "restrict" { bad += suite::run_restrict(); ran += 1; }
+    if every || name == "lstm" { bad += suite::run_lstm(); ran += 1; }
     if every || name == "bidi_line" { bad += suite::run_bidi_line(); ran += 1; }
     // An unknown name runs no group. The test program must not pass then.
     if !every && ran == 0 {

@@ -94,3 +94,11 @@ under the MIT license and the Apache License 2.0. The script
 test/make_bidi_line_cases.py reads both through the oracles in
 test/oracle and writes numbers only. No source code of the crate and no
 source code of the library is in this package.
+
+The model engine of the package holds the weights of two models of ICU
+release 79.1: Thai_graphclust_model4_heavy and
+Burmese_graphclust_model5_heavy. The files come from icu4c/source/data/
+brkitr/lstm and fall under the Unicode License. The script
+test/make_lstm_data.py reads them and writes numbers only. The script
+test/make_lstm_cases.py asks ICU for the breaks of its corpus. No source
+code of ICU is in this package.
