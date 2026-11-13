@@ -216,14 +216,26 @@ def expected(case, icu, rust):
     removed = [k for k in range(a, b) if cps[k] in REMOVED]
     ic = [x for x in icu["O"] if cps[x] not in REMOVED]
     if "crlf" in diffs or rust is None or "L" not in rust:
-        # The text has CR LF, so only ICU answers. A removed code point
-        # in such a text has no reference.
+        # The crate and ICU split a text with CR LF into paragraphs in
+        # different ways. ICU answers the levels of such a text.
         if removed:
-            raise Unexplained("removed code point beside CR LF")
+            # ICU gives a removed code point the level of the next code
+            # point. The standard gives it the level of the previous one.
+            # The crate gives the level of the standard. Its answer counts
+            # when it agrees with ICU on the line.
+            if rust is None or "L" not in rust:
+                raise Unexplained("removed code point beside CR LF")
+            if rust["O"] != icu["O"]:
+                raise Unexplained("order differs: icu %s rust %s" % (icu["O"], rust["O"]))
+            if icu_levels and rust["L"] != icu["L"]:
+                raise Unexplained("levels differ: icu %s rust %s" % (icu["L"], rust["L"]))
+            diffs.add("removed")
         src = icu
         exp["L"] = icu["L"] if icu_levels else None
         exp["O"] = icu["O"]
     else:
+        # The crate gives the levels of the standard. ICU gives the level
+        # of the next code point to a removed code point.
         src = rust
         for k in range(b - a):
             if cps[a + k] in REMOVED:
