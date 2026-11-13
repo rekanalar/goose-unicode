@@ -133,8 +133,13 @@ def main():
             # The classes of the break tables map to the alias positions.
             classes = internal_classes(PREFIX[code])
             classes["OTHER"] = 0
+            # The classes below are the ones of the package, not of the
+            # standard. The alias file of the standard holds no name for
+            # them, and the standard never gives them to a code point.
             if code == "SB":
                 classes.pop("BAD")
+            if code == "WB":
+                classes.pop("CJ")
             table = {}
             for cname, num in classes.items():
                 if norm(cname) not in long_index:

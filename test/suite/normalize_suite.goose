@@ -7,10 +7,10 @@ import unicode from "../..";
 // The bytes of the code points of a case column.
 fn column_bytes(case: i64, col: i64) -> u8[>..] {
     let at = 5 * case + col;
-    let start = NT_OFF[at];
-    let stop = NT_OFF[at + 1];
+    let start = pool_val(NT_OFF, at);
+    let stop = pool_val(NT_OFF, at + 1);
     var out: u8[>..] = [];
-    for k in start..stop { push_utf8(out, NT_POOL[k]); }
+    for k in start..stop { push_utf8(out, pool_val(NT_POOL, k)); }
     return out;
 }
 
@@ -41,7 +41,7 @@ fn same_col(case: i64, form: i64, from: i64, want: i64) -> i64 {
 // The conformance rules of the normalization standard.
 fn test_conformance() -> i64 {
     var bad = 0;
-    let cases = (NT_OFF.len - 1) / 5;
+    let cases = (NT_OFF.len / 3 - 1) / 5;
     for c in 0..cases {
         // The source, the composed form and the decomposed form agree.
         bad += same_col(c, unicode::FORM_NFC, 0, 1);
@@ -69,7 +69,7 @@ fn test_conformance() -> i64 {
 // The quick check must agree with the full conversion.
 fn test_quick_check() -> i64 {
     var bad = 0;
-    let cases = (NT_OFF.len - 1) / 5;
+    let cases = (NT_OFF.len / 3 - 1) / 5;
     let forms: i64[4] = [unicode::FORM_NFC, unicode::FORM_NFD, unicode::FORM_NFKC, unicode::FORM_NFKD];
     let wants: i64[4] = [1, 2, 3, 4];
     for c in 0..cases {

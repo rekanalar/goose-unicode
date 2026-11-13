@@ -109,18 +109,25 @@ fn co_replay() -> i64 {
     var k2: i64[>..] = [];
     var ta: u8[>..] = [];
     var tb: u8[>..] = [];
-    for i in 1..CC_OFF.len - 1 {
+    var ca: i64[>..] = [];
+    var cb: i64[>..] = [];
+    for i in 1..CC_OFF.len / 3 - 1 {
         ta.clear();
         tb.clear();
-        unicode::encode_all(ta, CC_POOL[CC_OFF[i - 1]..CC_OFF[i]]);
-        unicode::encode_all(tb, CC_POOL[CC_OFF[i]..CC_OFF[i + 1]]);
+        let o0 = pool_val(CC_OFF, i - 1);
+        let o1 = pool_val(CC_OFF, i);
+        let o2 = pool_val(CC_OFF, i + 1);
+        pool_load(ca, CC_POOL, o0, o1);
+        pool_load(cb, CC_POOL, o1, o2);
+        unicode::encode_all(ta, ca[..]);
+        unicode::encode_all(tb, cb[..]);
         let code, off = unicode::compare(out, ta[..], tb[..]);
         if code != unicode::OK {
             bad += 1;
             if bad <= 5 { print("FAIL: conformance line ", i, " fault ", code, " lens ", ta.len, " ", tb.len, "\n"); }
             continue;
         }
-        let want = -CC_REL[i];
+        let want = -(CC_REL[i] as i64);
         if out.len != 1 || out[0] != want {
             bad += 1;
             if bad <= 5 { print("FAIL: conformance line ", i, " sign ", out[0], " want ", want, "\n"); }
@@ -131,7 +138,7 @@ fn co_replay() -> i64 {
             if c1 != unicode::OK || c2 != unicode::OK {
                 bad += 1;
                 if bad <= 5 { print("FAIL: key fault at line ", i, "\n"); }
-            } else if co_key_sign(k1[..], k2[..]) != -CC_REL[i] {
+            } else if co_key_sign(k1[..], k2[..]) != -(CC_REL[i] as i64) {
                 bad += 1;
                 if bad <= 5 { print("FAIL: key order at line ", i, "\n"); }
             }
@@ -145,22 +152,26 @@ fn co_replay() -> i64 {
 fn co_pairs() -> i64 {
     var bad = 0;
     var out: i64[>..] = [];
+    var a: i64[>..] = [];
+    var b: i64[>..] = [];
+    var ta: u8[>..] = [];
+    var tb: u8[>..] = [];
     for p in 0..RP_SIGN.len {
-        let a = RP_POOL[2 * p..2 * p + 1];
-        let b = RP_POOL[2 * p + 1..2 * p + 2];
-        var ta: u8[>..] = [];
-        var tb: u8[>..] = [];
-        unicode::encode_all(ta, a);
-        unicode::encode_all(tb, b);
+        pool_load(a, RP_POOL, 2 * p, 2 * p + 1);
+        pool_load(b, RP_POOL, 2 * p + 1, 2 * p + 2);
+        ta.clear();
+        tb.clear();
+        unicode::encode_all(ta, a[..]);
+        unicode::encode_all(tb, b[..]);
         let code, off = unicode::compare(out, ta[..], tb[..]);
         if code != unicode::OK {
             bad += 1;
             if bad <= 5 { print("FAIL: pair ", p, " fault ", code, "\n"); }
             continue;
         }
-        if out.len != 1 || out[0] != RP_SIGN[p] {
+        if out.len != 1 || out[0] != (RP_SIGN[p] as i64) - 1 {
             bad += 1;
-            if bad <= 5 { print("FAIL: pair ", p, " sign ", out[0], " want ", RP_SIGN[p], "\n"); }
+            if bad <= 5 { print("FAIL: pair ", p, " sign ", out[0], " want ", (RP_SIGN[p] as i64) - 1, "\n"); }
         }
     }
     return bad;

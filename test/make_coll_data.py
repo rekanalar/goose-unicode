@@ -308,11 +308,11 @@ def main():
         pair_sign.append(v)
 
     suite = [
-        u.array("CC_POOL", case_pool, "The code points of each conformance text."),
-        u.array("CC_OFF", case_off, "The end of each conformance text."),
-        u.array("CC_REL", case_rel, "Each line holds 1: it orders above the line before it, or 0: both lines hold the same weights."),
-        u.array("RP_POOL", pair_cps, "The two code points of each random pair."),
-        u.array("RP_SIGN", pair_sign, "The sign of each random pair."),
+        u.bytes_array("CC_POOL", u.pool_bytes(case_pool), "The code points of each conformance text."),
+        u.bytes_array("CC_OFF", u.pool_bytes(case_off), "The end of each conformance text."),
+        u.bytes_array("CC_REL", bytes(case_rel), "Each line holds 1: it orders above the line before it, or 0: both lines hold the same weights."),
+        u.bytes_array("RP_POOL", u.pool_bytes(pair_cps), "The two code points of each random pair."),
+        u.bytes_array("RP_SIGN", bytes(v + 1 for v in pair_sign), "The sign of each random pair, plus one: 0, 1 or 2 for minus one, zero or plus one."),
     ]
     u.write_goose(os.path.join(u.ROOT, "test", "suite", "coll_cases.goose"),
                   "make_coll_data.py", suite, "suite")

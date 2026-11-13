@@ -6,10 +6,10 @@ import unicode from "../..";
 
 // The code points of one case of the case file.
 fn w_case(case: i64) -> i64[>..] {
-    let start = W_OFF[case];
-    let n = W_POOL[start];
+    let start = pool_val(W_OFF, case);
+    let n = pool_val(W_POOL, start);
     var out: i64[>..] = [];
-    for k in 1..n + 1 { out.push(W_POOL[start + k]); }
+    for k in 1..n + 1 { out.push(pool_val(W_POOL, start + k)); }
     return out;
 }
 
@@ -90,7 +90,7 @@ fn w_chars_cjk() -> i64 {
 fn w_string_cases() -> i64 {
     var bad = 0;
     var buf: u8[>..] = [];
-    for c in 0..W_EXP.len {
+    for c in 0..W_EXP.len / 3 {
         let cps = w_case(c);
         buf.clear();
         for k in 0..cps.len {
@@ -102,20 +102,20 @@ fn w_string_cases() -> i64 {
             bad += 1;
             continue;
         }
-        if w != W_EXP[c] {
-            print("FAIL: case ", c, " width ", w, ", want ", W_EXP[c], "\n");
+        if w != pool_val(W_EXP, c) {
+            print("FAIL: case ", c, " width ", w, ", want ", pool_val(W_EXP, c), "\n");
             bad += 1;
             if bad > 20 { print("FAIL: too many wrong widths\n"); return bad; }
         }
         let codec, wc = unicode::string_width_cjk(buf[..]);
-        if codec != unicode::OK || wc != W_EXPC[c] {
-            print("FAIL: case ", c, " East Asian width ", wc, ", want ", W_EXPC[c], "\n");
+        if codec != unicode::OK || wc != pool_val(W_EXPC, c) {
+            print("FAIL: case ", c, " East Asian width ", wc, ", want ", pool_val(W_EXPC, c), "\n");
             bad += 1;
             if bad > 20 { print("FAIL: too many wrong widths\n"); return bad; }
         }
     }
-    if W_EXP.len != 50079 {
-        print("FAIL: the case file holds ", W_EXP.len, " cases\n");
+    if W_EXP.len / 3 != 50079 {
+        print("FAIL: the case file holds ", W_EXP.len / 3, " cases\n");
         bad += 1;
     }
     return bad;

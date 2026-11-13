@@ -290,9 +290,10 @@ fn name_samples() -> i64 {
 // Every code point with a name, against the names of the ICU library.
 fn name_full() -> i64 {
     var bad = 0;
-    for k in 0..NAME_CASE_CP.len {
-        if unicode::name(NAME_CASE_CP[k]) != NAME_EXPECT[NAME_CASE_OFF[k]..NAME_CASE_OFF[k + 1]] {
-            print("FAIL: the name of ", NAME_CASE_CP[k], " differs\n");
+    for k in 0..NAME_CASE_CP.len / 3 {
+        let cp = pool_val(NAME_CASE_CP, k);
+        if unicode::name(cp) != NAME_EXPECT[pool_val(NAME_CASE_OFF, k)..pool_val(NAME_CASE_OFF, k + 1)] {
+            print("FAIL: the name of ", cp, " differs\n");
             bad += 1;
             if bad > 5 { return bad; }
         }

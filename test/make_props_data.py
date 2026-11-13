@@ -427,8 +427,8 @@ def main():
 
     # ---- write the name cases for the test suite ------------------------
     case_parts = [
-        u.array("NAME_CASE_CP", name_cps, "A code point with a name."),
-        u.array("NAME_CASE_OFF", name_off2(name_cps, names),
+        u.bytes_array("NAME_CASE_CP", u.pool_bytes(name_cps), "A code point with a name."),
+        u.bytes_array("NAME_CASE_OFF", u.pool_bytes(name_off2(name_cps, names)),
                 "The start of the expected name in NAME_EXPECT."),
         u.string("NAME_EXPECT", name_names),
     ]

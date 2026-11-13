@@ -7,7 +7,7 @@ compile the two model files of ICU, Thai_graphclust_model4_heavy and
 Burmese_graphclust_model5_heavy.
 
 Usage: make_lstm_cases.py <icu prefix> <icu source> [texts per script]
-The script builds test/oracle/lstmbrk.c, compiles the models into
+The script builds test/oracle/csrc/lstmbrk.c, compiles the models into
 tmp/lstm_models and asks ICU for the breaks. Each break is the index of a
 code point. All code points of the texts lie in the BMP.
 """
@@ -35,7 +35,7 @@ def build_oracle(prefix, src):
                         os.path.join(work, "icudt79l", "brkitr"), txt],
                        check=True, env=env)
     exe = os.path.join(work, "lstmbrk")
-    subprocess.run(["gcc", "-O1", "-o", exe, os.path.join(HERE, "oracle", "lstmbrk.c"),
+    subprocess.run(["gcc", "-O1", "-o", exe, os.path.join(HERE, "oracle", "csrc", "lstmbrk.c"),
                     "-I" + prefix + "/include", "-L" + prefix + "/lib",
                     "-licuuc", "-licudata"], check=True)
     return exe, work, env

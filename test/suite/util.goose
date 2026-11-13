@@ -17,3 +17,9 @@ fn pool_val(pool: const u8[:], i: i64) -> i64 {
     let c = pool[3 * i + 2] as i64;
     return a | (b << 8) | (c << 16);
 }
+
+// Copy the values from index a up to index b of a pool into dst.
+fn pool_load(dst: i64[>..]&, pool: const u8[:], a: i64, b: i64) {
+    dst.clear();
+    for i in a..b { dst.push(pool_val(pool, i)); }
+}
