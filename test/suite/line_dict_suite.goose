@@ -203,8 +203,8 @@ fn ld_faults() -> i64 {
 
 fn run_line_dict() -> i64 {
     var bad: i64 = 0;
-    bad += ld_battery();
-    bad += ld_scenarios();
-    bad += ld_faults();
+    if want("line_dict", "ld_battery") { bad += ld_battery(); }
+    if want("line_dict", "ld_scenarios") { bad += ld_scenarios(); }
+    if want("line_dict", "ld_faults") { bad += ld_faults(); }
     return bad;
 }

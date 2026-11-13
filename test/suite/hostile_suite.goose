@@ -381,16 +381,16 @@ fn hostile_full_bounds() -> i64 {
 
 fn run_hostile() -> i64 {
     var bad = 0;
-    bad += hostile_random();
-    bad += hostile_cut();
-    bad += hostile_flip();
-    bad += hostile_bounds();
-    bad += hostile_output_bound();
-    bad += hostile_fault_holds_no_bytes();
-    bad += hostile_encode();
-    bad += hostile_long_run();
-    bad += hostile_properties();
-    bad += hostile_full_case();
-    bad += hostile_full_bounds();
+    if want("hostile", "hostile_random") { bad += hostile_random(); }
+    if want("hostile", "hostile_cut") { bad += hostile_cut(); }
+    if want("hostile", "hostile_flip") { bad += hostile_flip(); }
+    if want("hostile", "hostile_bounds") { bad += hostile_bounds(); }
+    if want("hostile", "hostile_output_bound") { bad += hostile_output_bound(); }
+    if want("hostile", "hostile_fault_holds_no_bytes") { bad += hostile_fault_holds_no_bytes(); }
+    if want("hostile", "hostile_encode") { bad += hostile_encode(); }
+    if want("hostile", "hostile_long_run") { bad += hostile_long_run(); }
+    if want("hostile", "hostile_properties") { bad += hostile_properties(); }
+    if want("hostile", "hostile_full_case") { bad += hostile_full_case(); }
+    if want("hostile", "hostile_full_bounds") { bad += hostile_full_bounds(); }
     return bad;
 }

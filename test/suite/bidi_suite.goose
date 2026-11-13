@@ -203,10 +203,10 @@ fn bd_class_cases() -> i64 {
 
 fn run_bidi() -> i64 {
     var bad = 0;
-    bad += bd_samples();
-    bad += bd_faults();
-    bad += bd_cases();
-    bad += bd_class_cases();
-    bad += bd_hostile();
+    if want("bidi", "bd_samples") { bad += bd_samples(); }
+    if want("bidi", "bd_faults") { bad += bd_faults(); }
+    if want("bidi", "bd_cases") { bad += bd_cases(); }
+    if want("bidi", "bd_class_cases") { bad += bd_class_cases(); }
+    if want("bidi", "bd_hostile") { bad += bd_hostile(); }
     return bad;
 }

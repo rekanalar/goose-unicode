@@ -532,13 +532,13 @@ var RL_SCRIPTS: i64[>..] = [];
 // Runs the tests of the restriction levels.
 fn run_restrict() -> i64 {
     var bad = 0;
-    bad += rl_levels();
-    bad += rl_faults();
-    bad += rl_cases();
-    bad += rl_edges();
-    bad += rl_scripts();
-    bad += rl_kinds();
-    bad += rl_whole_script();
-    bad += rl_hostile();
+    if want("restrict", "rl_levels") { bad += rl_levels(); }
+    if want("restrict", "rl_faults") { bad += rl_faults(); }
+    if want("restrict", "rl_cases") { bad += rl_cases(); }
+    if want("restrict", "rl_edges") { bad += rl_edges(); }
+    if want("restrict", "rl_scripts") { bad += rl_scripts(); }
+    if want("restrict", "rl_kinds") { bad += rl_kinds(); }
+    if want("restrict", "rl_whole_script") { bad += rl_whole_script(); }
+    if want("restrict", "rl_hostile") { bad += rl_hostile(); }
     return bad;
 }

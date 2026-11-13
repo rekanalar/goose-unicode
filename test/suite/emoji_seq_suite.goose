@@ -460,10 +460,10 @@ fn es_hostile() -> i64 {
 
 fn run_emoji_seq() -> i64 {
     var bad: i64 = 0;
-    bad += es_battery();
-    bad += es_scenarios();
-    bad += es_scan();
-    bad += es_faults();
-    bad += es_hostile();
+    if want("emoji_seq", "es_battery") { bad += es_battery(); }
+    if want("emoji_seq", "es_scenarios") { bad += es_scenarios(); }
+    if want("emoji_seq", "es_scan") { bad += es_scan(); }
+    if want("emoji_seq", "es_faults") { bad += es_faults(); }
+    if want("emoji_seq", "es_hostile") { bad += es_hostile(); }
     return bad;
 }

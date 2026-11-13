@@ -64,6 +64,18 @@ void* ucnv_open_79(const char* name, int32_t* err);
 void ucnv_close_79(void* cnv);
 int32_t ucnv_toUChars_79(void* cnv, uint16_t* dest, int32_t destCap, const char* src, int32_t srcLen, int32_t* err);
 const char* ucnv_detectUnicodeSignature_79(const char* source, int32_t len, int32_t* sigLen, int32_t* err);
+typedef struct UBiDi UBiDi;
+UBiDi* ubidi_open_79(void);
+void ubidi_close_79(UBiDi* b);
+void ubidi_setPara_79(UBiDi* b, const uint16_t* text, int32_t length, uint8_t paraLevel, uint8_t* embeddingLevels, int32_t* err);
+void ubidi_setLine_79(const UBiDi* para, int32_t start, int32_t limit, UBiDi* line, int32_t* err);
+int32_t ubidi_countParagraphs_79(UBiDi* b);
+void ubidi_getParagraphByIndex_79(const UBiDi* b, int32_t idx, int32_t* start, int32_t* limit, uint8_t* level, int32_t* err);
+const uint8_t* ubidi_getLevels_79(UBiDi* b, int32_t* err);
+void ubidi_getVisualMap_79(UBiDi* b, int32_t* map, int32_t* err);
+int32_t ubidi_getLength_79(const UBiDi* b);
+int32_t ubidi_getDirection_79(const UBiDi* b);
+int32_t ubidi_writeReordered_79(UBiDi* b, uint16_t* dest, int32_t destSize, uint16_t options, int32_t* err);
 */
 import "C"
 
@@ -876,6 +888,53 @@ func main() {
 			}
 			fmt.Fprintf(w, "%d\n", int(flags))
 		}
+	case "gobidi":
+		// Each input line holds code points in hex. The output holds the
+		// byte count that each SetString call of x/text takes, until the
+		// text is gone.
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<22), 1<<22)
+		for lines.Scan() {
+			var sb strings.Builder
+			for _, f := range strings.Fields(lines.Text()) {
+				var v rune
+				fmt.Sscanf(f, "%X", &v)
+				sb.WriteRune(v)
+			}
+			rest := sb.String()
+			var ns []string
+			for len(rest) > 0 {
+				var p bidi.Paragraph
+				n, err := p.SetString(rest)
+				if err != nil || n == 0 {
+					ns = append(ns, "E")
+					break
+				}
+				ns = append(ns, fmt.Sprint(n))
+				rest = rest[n:]
+			}
+			fmt.Fprintln(w, strings.Join(ns, " "))
+		}
+	case "icubidi":
+		// Each input line holds "dir start limit | code points in hex".
+		// The direction is 0, 1 or 2 (left to right, right to left, auto).
+		// The start and the limit count code points. The output of one
+		// input is the paragraphs, then either "E code" or the levels of
+		// the line, the visual map and the written text for the eight
+		// combinations of the flags 1, 2 and 8. A line ends with ".".
+		lines := bufio.NewScanner(os.Stdin)
+		lines.Buffer(make([]byte, 1<<22), 1<<22)
+		for lines.Scan() {
+			icuBidi(w, lines.Text())
+		}
+	case "icubidicontrol":
+		// The code points of the property Bidi_Control (value 2 of the ICU
+		// binary properties), one per line, in hex.
+		for r := rune(0); r <= 0x10FFFF; r++ {
+			if C.u_hasBinaryProperty_79(C.int32_t(r), 2) != 0 {
+				fmt.Fprintf(w, "%04X\n", int(r))
+			}
+		}
 	case "icuidstatus":
 		// Each input line holds one code point in hex. The output holds
 		// the Identifier_Status of the code point from the ICU library.
@@ -1365,4 +1424,96 @@ func u_charName(r int) string {
 		}
 	}
 	return ""
+}
+
+// icuBidi runs the ICU bidi calls on one input line and prints the result.
+func icuBidi(w *bufio.Writer, in string) {
+	head, body, _ := strings.Cut(in, "|")
+	var dir, start, limit int
+	fmt.Sscanf(strings.TrimSpace(head), "%d %d %d", &dir, &start, &limit)
+	var cps []rune
+	for _, f := range strings.Fields(body) {
+		var v rune
+		fmt.Sscanf(f, "%X", &v)
+		cps = append(cps, v)
+	}
+	// The unit offsets of each code point in the UTF-16 text.
+	off := make([]int, len(cps)+1)
+	var u []uint16
+	for i, c := range cps {
+		off[i] = len(u)
+		u = append(u, utf16.Encode([]rune{c})...)
+	}
+	off[len(cps)] = len(u)
+	buf := make([]uint16, len(u)+1)
+	copy(buf, u)
+	level := C.uint8_t(0xfe)
+	if dir == 0 || dir == 1 {
+		level = C.uint8_t(dir)
+	}
+	para := C.ubidi_open_79()
+	defer C.ubidi_close_79(para)
+	var err C.int32_t
+	C.ubidi_setPara_79(para, (*C.uint16_t)(unsafe.Pointer(&buf[0])), C.int32_t(len(u)), level, nil, &err)
+	if err > 0 {
+		fmt.Fprintf(w, "E %d\n.\n", int(err))
+		return
+	}
+	count := int(C.ubidi_countParagraphs_79(para))
+	fmt.Fprintf(w, "P %d", count)
+	// The map from a unit offset back to a code point index.
+	back := make(map[int]int, len(cps))
+	for i := range cps {
+		back[off[i]] = i
+	}
+	back[off[len(cps)]] = len(cps)
+	for k := 0; k < count; k++ {
+		var ps, pl C.int32_t
+		var lv C.uint8_t
+		C.ubidi_getParagraphByIndex_79(para, C.int32_t(k), &ps, &pl, &lv, &err)
+		fmt.Fprintf(w, " %d %d %d", back[int(ps)], back[int(pl)], int(lv))
+	}
+	fmt.Fprintf(w, "\n")
+	if start < 0 || limit > len(cps) || start > limit {
+		fmt.Fprintf(w, "E range\n.\n")
+		return
+	}
+	line := C.ubidi_open_79()
+	defer C.ubidi_close_79(line)
+	C.ubidi_setLine_79(para, C.int32_t(off[start]), C.int32_t(off[limit]), line, &err)
+	if err > 0 {
+		fmt.Fprintf(w, "E %d\n.\n", int(err))
+		return
+	}
+	n := int(C.ubidi_getLength_79(line))
+	lv := C.ubidi_getLevels_79(line, &err)
+	levels := unsafe.Slice((*uint8)(unsafe.Pointer(lv)), n+1)
+	// The direction that ICU found: 0 left to right, 1 right to left, 2
+	// mixed. For a line that is not mixed, ICU gives the paragraph level to
+	// every code point, so its levels are not the levels of the standard.
+	fmt.Fprintf(w, "D %d\n", int(C.ubidi_getDirection_79(line)))
+	fmt.Fprintf(w, "L")
+	for i := start; i < limit; i++ {
+		fmt.Fprintf(w, " %d", levels[off[i]-off[start]])
+	}
+	fmt.Fprintf(w, "\nO")
+	vm := make([]C.int32_t, n+1)
+	C.ubidi_getVisualMap_79(line, &vm[0], &err)
+	for k := 0; k < n; k++ {
+		idx := off[start] + int(vm[k])
+		if c, ok := back[idx]; ok {
+			fmt.Fprintf(w, " %d", c)
+		}
+	}
+	fmt.Fprintf(w, "\n")
+	for _, f := range []int{0, 1, 2, 3, 8, 9, 10, 11} {
+		out := make([]uint16, 4*n+8)
+		m := int(C.ubidi_writeReordered_79(line, (*C.uint16_t)(unsafe.Pointer(&out[0])), C.int32_t(len(out)), C.uint16_t(f), &err))
+		fmt.Fprintf(w, "W %d", f)
+		for _, r := range utf16.Decode(out[:m]) {
+			fmt.Fprintf(w, " %X", r)
+		}
+		fmt.Fprintf(w, "\n")
+	}
+	fmt.Fprintf(w, ".\n")
 }

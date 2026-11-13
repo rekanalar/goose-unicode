@@ -221,9 +221,9 @@ fn append_str(out: u8[>..]&, s: const u8[:]) {
 
 fn run_coll() -> i64 {
     var bad = 0;
-    bad += co_samples();
-    bad += co_pairs();
-    bad += co_replay();
-    bad += co_faults();
+    if want("coll", "co_samples") { bad += co_samples(); }
+    if want("coll", "co_pairs") { bad += co_pairs(); }
+    if want("coll", "co_replay") { bad += co_replay(); }
+    if want("coll", "co_faults") { bad += co_faults(); }
     return bad;
 }

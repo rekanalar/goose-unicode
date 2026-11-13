@@ -103,10 +103,10 @@ fn lookup_hostile() -> i64 {
 
 fn run_name() -> i64 {
     var bad = 0;
-    bad += lookup_samples();
-    bad += lookup_aliases();
-    bad += lookup_queries();
-    bad += lookup_hostile();
-    bad += lookup_round_trip();
+    if want("name", "lookup_samples") { bad += lookup_samples(); }
+    if want("name", "lookup_aliases") { bad += lookup_aliases(); }
+    if want("name", "lookup_queries") { bad += lookup_queries(); }
+    if want("name", "lookup_hostile") { bad += lookup_hostile(); }
+    if want("name", "lookup_round_trip") { bad += lookup_round_trip(); }
     return bad;
 }

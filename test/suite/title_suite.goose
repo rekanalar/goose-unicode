@@ -174,11 +174,11 @@ fn title_hostile() -> i64 {
 
 fn run_title() -> i64 {
     var bad = 0;
-    bad += title_samples();
-    bad += title_bad_cp();
-    bad += title_faults();
-    bad += title_texts();
-    bad += title_every_cp();
-    bad += title_hostile();
+    if want("title", "title_samples") { bad += title_samples(); }
+    if want("title", "title_bad_cp") { bad += title_bad_cp(); }
+    if want("title", "title_faults") { bad += title_faults(); }
+    if want("title", "title_texts") { bad += title_texts(); }
+    if want("title", "title_every_cp") { bad += title_every_cp(); }
+    if want("title", "title_hostile") { bad += title_hostile(); }
     return bad;
 }

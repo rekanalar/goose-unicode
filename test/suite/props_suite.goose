@@ -302,16 +302,16 @@ fn name_full() -> i64 {
 
 fn run_props() -> i64 {
     var bad = 0;
-    bad += script_samples();
-    bad += script_boundaries();
-    bad += width_samples();
-    bad += width_boundaries();
-    bad += bidi_samples();
-    bad += mirror_samples();
-    bad += bidi_boundaries();
-    bad += numeric_samples();
-    bad += numeric_full();
-    bad += name_samples();
-    bad += name_full();
+    if want("props", "script_samples") { bad += script_samples(); }
+    if want("props", "script_boundaries") { bad += script_boundaries(); }
+    if want("props", "width_samples") { bad += width_samples(); }
+    if want("props", "width_boundaries") { bad += width_boundaries(); }
+    if want("props", "bidi_samples") { bad += bidi_samples(); }
+    if want("props", "mirror_samples") { bad += mirror_samples(); }
+    if want("props", "bidi_boundaries") { bad += bidi_boundaries(); }
+    if want("props", "numeric_samples") { bad += numeric_samples(); }
+    if want("props", "numeric_full") { bad += numeric_full(); }
+    if want("props", "name_samples") { bad += name_samples(); }
+    if want("props", "name_full") { bad += name_full(); }
     return bad;
 }

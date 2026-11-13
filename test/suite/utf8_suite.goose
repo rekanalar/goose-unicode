@@ -233,12 +233,12 @@ fn test_input_bound() -> i64 {
 
 fn run_utf8() -> i64 {
     var bad = 0;
-    bad += test_good();
-    bad += test_malformed();
-    bad += test_truncation();
-    bad += utf8_boundaries();
-    bad += test_encode_faults();
-    bad += test_round_trip();
-    bad += test_input_bound();
+    if want("utf8", "test_good") { bad += test_good(); }
+    if want("utf8", "test_malformed") { bad += test_malformed(); }
+    if want("utf8", "test_truncation") { bad += test_truncation(); }
+    if want("utf8", "utf8_boundaries") { bad += utf8_boundaries(); }
+    if want("utf8", "test_encode_faults") { bad += test_encode_faults(); }
+    if want("utf8", "test_round_trip") { bad += test_round_trip(); }
+    if want("utf8", "test_input_bound") { bad += test_input_bound(); }
     return bad;
 }

@@ -161,13 +161,13 @@ fn en_edges() -> i64 {
 
 fn run_enum() -> i64 {
     var bad = 0;
-    bad += en_edges();
-    bad += en_grapheme_break();
-    bad += en_word_break();
-    bad += en_sentence_break();
-    bad += en_hangul_syllable_type();
-    bad += en_indic_syllabic_category();
-    bad += en_indic_positional_category();
-    bad += en_vertical_orientation();
+    if want("enum", "en_edges") { bad += en_edges(); }
+    if want("enum", "en_grapheme_break") { bad += en_grapheme_break(); }
+    if want("enum", "en_word_break") { bad += en_word_break(); }
+    if want("enum", "en_sentence_break") { bad += en_sentence_break(); }
+    if want("enum", "en_hangul_syllable_type") { bad += en_hangul_syllable_type(); }
+    if want("enum", "en_indic_syllabic_category") { bad += en_indic_syllabic_category(); }
+    if want("enum", "en_indic_positional_category") { bad += en_indic_positional_category(); }
+    if want("enum", "en_vertical_orientation") { bad += en_vertical_orientation(); }
     return bad;
 }

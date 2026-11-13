@@ -52,6 +52,7 @@ import width;
 import bidi_data;
 import linebreak_data;
 import bidi;
+import bidi_line;
 import linebreak;
 import coll_data;
 import collate;

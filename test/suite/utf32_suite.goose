@@ -177,10 +177,10 @@ fn u32_hostile() -> i64 {
 
 fn run_utf32() -> i64 {
     var bad = 0;
-    bad += u32_cases();
-    bad += u32_names();
-    bad += u32_bad();
-    bad += u32_faults();
-    bad += u32_hostile();
+    if want("utf32", "u32_cases") { bad += u32_cases(); }
+    if want("utf32", "u32_names") { bad += u32_names(); }
+    if want("utf32", "u32_bad") { bad += u32_bad(); }
+    if want("utf32", "u32_faults") { bad += u32_faults(); }
+    if want("utf32", "u32_hostile") { bad += u32_hostile(); }
     return bad;
 }

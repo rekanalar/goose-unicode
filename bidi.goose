@@ -508,10 +508,16 @@ fn bd_core(cls: const i64[:], brk: const i64[:], dir: i64, lev: i64[>..]&) -> i6
         j = next_run;
     }
 
-    // L1: a separator, and the white space before a separator or at the
-    // end of the line, take the paragraph level.
+    return para;
+}
+
+// Rule L1 for a whole paragraph that is one line: a separator, and the
+// white space before a separator or at the end of the line, take the
+// paragraph level. The levels are the levels before L1. A code point
+// that rule X9 removes keeps the level -1.
+fn bd_l1(cls: const i64[:], lev: i64[>..]&, para: i64) {
     var zone = true;
-    k = n;
+    var k = cls.len;
     while k > 0 {
         k -= 1;
         let c = cls[k];
@@ -524,43 +530,137 @@ fn bd_core(cls: const i64[:], brk: const i64[:], dir: i64, lev: i64[>..]&) -> i6
             zone = false;
         }
     }
-    return para;
+}
+
+// The scan of a text. It decodes the text once. It fills the code
+// points, the classes, the bracket data and the byte offset of each code
+// point. The offsets hold one more value, the length of the text. The
+// call returns a fault code and the offset of a bad byte.
+fn bd_scan(cps: i64[>..]&, cls: i64[>..]&, brk: i64[>..]&, offs: i64[>..]&,
+           s: const u8[:]) -> i64, i64 {
+    cps.clear();
+    cls.clear();
+    brk.clear();
+    offs.clear();
+    var at: i64 = 0;
+    while at < s.len {
+        let cp, n = decode_at(s, at);
+        if cp < 0 { return ERR_BAD_UTF8, at; }
+        let c = bidi_class(cp);
+        cps.push(cp);
+        cls.push(c);
+        offs.push(at);
+        if c == BIDI_ON { brk.push(bd_bracket(cp)); } else { brk.push(0); }
+        at += n;
+    }
+    offs.push(s.len);
+    return OK, -1;
+}
+
+// The paragraph split (rule P1). out receives the start and the limit of
+// each paragraph. A code point of class B ends a paragraph and stays in
+// it. A CR followed by LF is one terminator. A final separator opens no
+// paragraph.
+fn bd_split(out: i64[>..]&, cps: const i64[:], cls: const i64[:]) {
+    out.clear();
+    let n = cls.len;
+    var a = 0;
+    while a < n {
+        var b = a;
+        while b < n && cls[b] != BIDI_B { b += 1; }
+        if b < n {
+            if cps[b] == 0x0D && b + 1 < n && cps[b + 1] == 0x0A { b += 1; }
+            b += 1;
+        }
+        out.push(a);
+        out.push(b);
+        a = b;
+    }
+}
+
+// The levels of one paragraph before rule L1, and the paragraph level.
+// A paragraph that holds only separators needs no run of the core. Its
+// code points take the paragraph level.
+fn bd_para_levels(lev: i64[>..]&, cls: const i64[:],
+                  brk: const i64[:], a: i64, b: i64, dir: i64) -> i64 {
+    if b - a <= 2 {
+        var only = true;
+        for k in a..b {
+            if cls[k] != BIDI_B { only = false; }
+        }
+        if only {
+            var para = 0;
+            if dir == BIDI_DIR_RTL { para = 1; }
+            lev.clear();
+            for k in a..b { lev.push(para); }
+            return para;
+        }
+    }
+    return bd_core(cls[a..b], brk[a..b], dir, lev);
 }
 
 // The embedding level of each code point of the UTF-8 text s. out is
 // cleared first and receives one level per code point. A code point that
 // rule X9 removes gets the level -1. dir is BIDI_DIR_LTR, BIDI_DIR_RTL or
 // BIDI_DIR_AUTO. The text splits into paragraphs, and each paragraph
-// takes its own level. The call returns a fault code and the level of the
-// first paragraph. A fault leaves out empty.
+// takes its own level. A CR followed by LF is one terminator. The call
+// returns a fault code and the level of the first paragraph. A fault
+// leaves out empty.
 fn bidi_levels(out: i64[>..]&, s: const u8[:], dir: i64) -> i64, i64 {
     out.clear();
     if dir < 0 || dir > 2 { return ERR_BAD_ARG, 0; }
     if s.len > MAX_INPUT { return ERR_TOO_LONG, 0; }
+    var cps: i64[>..] = [];
     var cls: i64[>..] = [];
     var brk: i64[>..] = [];
-    var at: i64 = 0;
-    while at < s.len {
-        let cp, n = decode_at(s, at);
-        if cp < 0 { return ERR_BAD_UTF8, 0; }
-        let c = bidi_class(cp);
-        cls.push(c);
-        if c == BIDI_ON { brk.push(bd_bracket(cp)); } else { brk.push(0); }
-        at += n;
-    }
+    var offs: i64[>..] = [];
+    let code, _ = bd_scan(cps, cls, brk, offs, s);
+    if code != OK { return code, 0; }
+    var cuts: i64[>..] = [];
+    bd_split(cuts, cps[..], cls[..]);
     var first = 0;
-    var a = 0;
     var plev: i64[>..] = [];
-    while a < cls.len {
-        var b = a;
-        while b < cls.len && cls[b] != BIDI_B { b += 1; }
-        if b < cls.len { b += 1; }
-        let pl = bd_core(cls[a..b], brk[a..b], dir, plev);
+    var p = 0;
+    while p < cuts.len {
+        let a = cuts[p];
+        let b = cuts[p + 1];
+        let pl = bd_para_levels(plev, cls[..], brk[..], a, b, dir);
+        bd_l1(cls[a..b], plev, pl);
         if a == 0 { first = pl; }
         for q in 0..plev.len { out.push(plev[q]); }
-        a = b;
+        p += 2;
     }
     return OK, first;
+}
+
+// Rule L2: reverses the runs of out. out holds indexes into levels.
+// A run is a stretch of indexes with levels at or above one level. The
+// loop runs from the highest level down to the lowest odd level, so it
+// makes at most 126 passes.
+fn bd_reverse(out: i64[>..]&, levels: const i64[:], maxl: i64, min_odd: i64) {
+    var lvl = maxl;
+    while lvl >= min_odd {
+        var i = 0;
+        while i < out.len {
+            if levels[out[i]] >= lvl {
+                var e = i;
+                while e < out.len && levels[out[e]] >= lvl { e += 1; }
+                var lo = i;
+                var hi = e - 1;
+                while lo < hi {
+                    let tmp = out[lo];
+                    out[lo] = out[hi];
+                    out[hi] = tmp;
+                    lo += 1;
+                    hi -= 1;
+                }
+                i = e;
+            } else {
+                i += 1;
+            }
+        }
+        lvl -= 1;
+    }
 }
 
 // The visual order of a line (rule L2). levels holds the level of each
@@ -585,28 +685,6 @@ fn bidi_order(out: i64[>..]&, levels: const i64[:]) -> i64 {
     for i in 0..levels.len {
         if levels[i] != BD_REMOVED { out.push(i); }
     }
-    var lvl = maxl;
-    while lvl >= min_odd {
-        var i = 0;
-        while i < out.len {
-            if levels[out[i]] >= lvl {
-                var e = i;
-                while e < out.len && levels[out[e]] >= lvl { e += 1; }
-                var lo = i;
-                var hi = e - 1;
-                while lo < hi {
-                    let tmp = out[lo];
-                    out[lo] = out[hi];
-                    out[hi] = tmp;
-                    lo += 1;
-                    hi -= 1;
-                }
-                i = e;
-            } else {
-                i += 1;
-            }
-        }
-        lvl -= 1;
-    }
+    bd_reverse(out, levels, maxl, min_odd);
     return OK;
 }

@@ -252,11 +252,11 @@ fn u16_hostile() -> i64 {
 
 fn run_utf16() -> i64 {
     var bad = 0;
-    bad += u16_cases();
-    bad += u16_names();
-    bad += u16_known();
-    bad += u16_bad();
-    bad += u16_faults();
-    bad += u16_hostile();
+    if want("utf16", "u16_cases") { bad += u16_cases(); }
+    if want("utf16", "u16_names") { bad += u16_names(); }
+    if want("utf16", "u16_known") { bad += u16_known(); }
+    if want("utf16", "u16_bad") { bad += u16_bad(); }
+    if want("utf16", "u16_faults") { bad += u16_faults(); }
+    if want("utf16", "u16_hostile") { bad += u16_hostile(); }
     return bad;
 }

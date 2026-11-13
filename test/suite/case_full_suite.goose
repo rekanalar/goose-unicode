@@ -146,9 +146,9 @@ fn full_bounds() -> i64 {
 
 fn run_case_full() -> i64 {
     var bad = 0;
-    bad += full_samples();
-    bad += full_texts();
-    bad += full_faults();
-    bad += full_bounds();
+    if want("case_full", "full_samples") { bad += full_samples(); }
+    if want("case_full", "full_texts") { bad += full_texts(); }
+    if want("case_full", "full_faults") { bad += full_faults(); }
+    if want("case_full", "full_bounds") { bad += full_bounds(); }
     return bad;
 }

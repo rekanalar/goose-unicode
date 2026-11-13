@@ -173,10 +173,10 @@ fn prop_samples() -> i64 {
 
 fn run_flags() -> i64 {
     var bad = 0;
-    bad += prop_samples();
-    bad += flag_samples();
-    bad += flag_range();
-    bad += flag_sample_points();
-    bad += flag_groups();
+    if want("flags", "prop_samples") { bad += prop_samples(); }
+    if want("flags", "flag_samples") { bad += flag_samples(); }
+    if want("flags", "flag_range") { bad += flag_range(); }
+    if want("flags", "flag_sample_points") { bad += flag_sample_points(); }
+    if want("flags", "flag_groups") { bad += flag_groups(); }
     return bad;
 }

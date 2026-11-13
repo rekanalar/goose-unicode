@@ -86,8 +86,8 @@ fn char_samples() -> i64 {
 
 fn run_char() -> i64 {
     var bad = 0;
-    bad += char_samples();
-    bad += char_values();
+    if want("char", "char_samples") { bad += char_samples(); }
+    if want("char", "char_values") { bad += char_values(); }
     bad += ch_runs(CT_START[..], CT_END[..], CT_VAL[..], 0);
     bad += ch_runs(CD_START[..], CD_END[..], CD_VAL[..], 1);
     bad += ch_runs(CJ_START[..], CJ_END[..], CJ_VAL[..], 2);

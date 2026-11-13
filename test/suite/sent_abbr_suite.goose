@@ -342,10 +342,10 @@ fn sa_faults() -> i64 {
 
 fn run_sent_abbr() -> i64 {
     var bad: i64 = 0;
-    bad += sa_battery();
-    bad += sa_line_battery();
-    bad += sa_scenarios();
-    bad += sa_line_scenarios();
-    bad += sa_faults();
+    if want("sent_abbr", "sa_battery") { bad += sa_battery(); }
+    if want("sent_abbr", "sa_line_battery") { bad += sa_line_battery(); }
+    if want("sent_abbr", "sa_scenarios") { bad += sa_scenarios(); }
+    if want("sent_abbr", "sa_line_scenarios") { bad += sa_line_scenarios(); }
+    if want("sent_abbr", "sa_faults") { bad += sa_faults(); }
     return bad;
 }

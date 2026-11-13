@@ -234,15 +234,15 @@ fn loc_hostile() -> i64 {
 
 fn run_locale() -> i64 {
     var bad = 0;
-    bad += loc_tr();
-    bad += loc_az();
-    bad += loc_lt();
-    bad += loc_root();
-    bad += loc_bad_locale();
-    bad += loc_bad_utf8();
-    bad += loc_too_long();
-    bad += loc_tags();
-    bad += loc_hostile();
+    if want("locale", "loc_tr") { bad += loc_tr(); }
+    if want("locale", "loc_az") { bad += loc_az(); }
+    if want("locale", "loc_lt") { bad += loc_lt(); }
+    if want("locale", "loc_root") { bad += loc_root(); }
+    if want("locale", "loc_bad_locale") { bad += loc_bad_locale(); }
+    if want("locale", "loc_bad_utf8") { bad += loc_bad_utf8(); }
+    if want("locale", "loc_too_long") { bad += loc_too_long(); }
+    if want("locale", "loc_tags") { bad += loc_tags(); }
+    if want("locale", "loc_hostile") { bad += loc_hostile(); }
     if bad > 0 {
         print("FAIL: locale suite holds ", bad, " errors\n");
     }

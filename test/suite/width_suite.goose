@@ -250,9 +250,9 @@ fn w_hostile() -> i64 {
 
 fn run_width() -> i64 {
     var bad = 0;
-    bad += w_chars();
-    bad += w_string_cases();
-    bad += w_faults();
-    bad += w_hostile();
+    if want("width", "w_chars") { bad += w_chars(); }
+    if want("width", "w_string_cases") { bad += w_string_cases(); }
+    if want("width", "w_faults") { bad += w_faults(); }
+    if want("width", "w_hostile") { bad += w_hostile(); }
     return bad;
 }

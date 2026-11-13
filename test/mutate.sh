@@ -8,7 +8,7 @@
 # the group does not catch runs the whole test program, so a wrong group
 # cannot hide a missing test.
 #
-# Usage: bash test/mutate.sh [goose binary]
+# Usage: [MUTATE_ONLY=<part of a probe name>] bash test/mutate.sh [goose binary]
 set -uo pipefail
 
 here="$(cd "$(dirname "$0")" && pwd)"
@@ -35,6 +35,8 @@ groups_for() {
         case_full.goose) echo "case_full" ;;
         test/suite/props_suite.goose) echo "props" ;;
         restrict.goose) echo "restrict" ;;
+        bidi.goose) echo "bidi_line bidi" ;;
+        bidi_line.goose) echo "bidi_line" ;;
         *) echo "" ;;
     esac
 }
@@ -42,6 +44,8 @@ groups_for() {
 # run_probe <name> <file> <old text> <new text>
 run_probe() {
     local name="$1" file="$2" old="$3" new="$4"
+    # MUTATE_ONLY holds a part of a probe name. Other probes do not run.
+    if [ -n "${MUTATE_ONLY:-}" ] && [[ "$name" != *"$MUTATE_ONLY"* ]]; then return; fi
     local copy="$work/$name"
     local groups
     groups="$(groups_for "$file")"
@@ -284,6 +288,80 @@ run_probe restrict_kinds_all restrict.goose \
         mask |= CONF_SINGLE;' \
     '    if set_is_all(set_a) || set_is_all(set_b) || !set_is_empty(set_and(set_a, set_b)) {
         mask |= CONF_SINGLE;'
+
+# The paragraph split. A CR followed by LF is one terminator.
+run_probe bidi_line_crlf bidi.goose \
+    'if cps[b] == 0x0D && b + 1 < n && cps[b + 1] == 0x0A { b += 1; }' \
+    'if false { b += 1; }'
+
+# The paragraph level of a paragraph of separators follows the direction.
+run_probe bidi_line_sep_para bidi.goose \
+    '            if dir == BIDI_DIR_RTL { para = 1; }
+            lev.clear();' \
+    '            lev.clear();'
+
+# Rule L1. The white space at the end of a line takes the paragraph level.
+run_probe bidi_line_l1_trailing bidi_line.goose \
+    '    if from >= 0 {' \
+    '    if false {'
+
+# Rule L1. A separator resets the white space before it.
+run_probe bidi_line_l1_separator bidi_line.goose \
+    'if kind == BL_SEPARATOR || kind == BL_END {' \
+    'if kind == BL_END {'
+
+# A removed code point takes the level of the code point before it, after
+# rule L1.
+run_probe bidi_line_removed_after_l1 bidi_line.goose \
+    'else { out[k - start] = out[k - start - 1]; }' \
+    'else { out[k - start] = bl_para(res[k]); }'
+
+# A removed code point takes the level of the code point before it, before
+# rule L1.
+run_probe bidi_line_removed_resolve bidi_line.goose \
+    'if l == BD_REMOVED { l = prev; }' \
+    'if l == BD_REMOVED { l = pl; }'
+
+# Rule L2 reverses the runs of a line.
+run_probe bidi_line_l2 bidi_line.goose \
+    '    bd_reverse(ord, lv[..], maxl, min_odd);' \
+    '    min_odd = min_odd + 0;'
+
+# A line that crosses a paragraph is a fault.
+run_probe bidi_line_cross bidi_line.goose \
+    'if bl_kind(v) == BL_END && k + 1 < limit { return ERR_BAD_ARG; }' \
+    'if false { return ERR_BAD_ARG; }'
+
+# An unknown option bit is a fault.
+run_probe bidi_line_flag_mask bidi_line.goose \
+    '| BIDI_REMOVE_CONTROLS)) != 0 { return ERR_BAD_ARG; }' \
+    '| BIDI_REMOVE_CONTROLS | 4)) != 0 { return ERR_BAD_ARG; }'
+
+# Rule L4 mirrors a code point in a right to left run.
+run_probe bidi_line_mirror bidi_line.goose \
+    'lv[ord[i] - start] % 2 == 1 { cp = mirror_of(cp); }' \
+    'lv[ord[i] - start] % 2 == 0 { cp = mirror_of(cp); }'
+
+# The removal of the controls follows the property Bidi_Control.
+run_probe bidi_line_controls bidi_line.goose \
+    'has_property(cp, PROP_BIDI_CONTROL) { continue; }' \
+    '(cp == 0x200E || cp == 0x200D) { continue; }'
+
+# Rule L3 keeps a mark after its base.
+run_probe bidi_line_keep_base bidi_line.goose \
+    'if (flags & BIDI_KEEP_BASE_COMBINING) != 0 { bl_keep_base(' \
+    'if false { bl_keep_base('
+
+# The bound of the input of the paragraph split.
+run_probe bidi_line_input_bound bidi_line.goose \
+    'if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }' \
+    'if s.len > MAX_INPUT * 2 { return ERR_TOO_LONG, -1; }'
+
+# A fault of the resolution clears the offsets.
+run_probe bidi_line_resolve_clear bidi_line.goose \
+    '        offs.clear();
+        return code, off;' \
+    '        return code, off;'
 
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi

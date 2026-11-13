@@ -114,9 +114,9 @@ fn line_hostile() -> i64 {
 
 fn run_line() -> i64 {
     var bad = 0;
-    bad += line_samples();
-    bad += line_faults();
-    bad += line_hostile();
-    bad += line_conformance();
+    if want("line", "line_samples") { bad += line_samples(); }
+    if want("line", "line_faults") { bad += line_faults(); }
+    if want("line", "line_hostile") { bad += line_hostile(); }
+    if want("line", "line_conformance") { bad += line_conformance(); }
     return bad;
 }

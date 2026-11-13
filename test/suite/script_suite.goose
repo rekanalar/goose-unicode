@@ -70,7 +70,7 @@ fn sx_samples() -> i64 {
 
 fn run_script() -> i64 {
     var bad = 0;
-    bad += sx_samples();
-    bad += sx_runs();
+    if want("script", "sx_samples") { bad += sx_samples(); }
+    if want("script", "sx_runs") { bad += sx_runs(); }
     return bad;
 }

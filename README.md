@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.28.0";
+import unicode from "rekanalar/goose-unicode@v0.29.0";
 ```
 
 ## API
@@ -90,6 +90,13 @@ import unicode from "rekanalar/goose-unicode@v0.28.0";
 | `bidi_class_name(cp)` | the name of the class, such as `L` or `AL` |
 | `bidi_levels(out, s, dir)` | the embedding level of each code point; `dir` is `BIDI_DIR_LTR`, `BIDI_DIR_RTL` or `BIDI_DIR_AUTO`; gives a fault code and the level of the first paragraph |
 | `bidi_order(out, levels)` | the visual order of a line: the index of each code point from left to right |
+| `bidi_paragraphs(out, s, dir)` | the paragraphs of a text: the start, the limit and the level of each one, in code points; gives a fault code and the offset of a bad byte |
+| `bidi_resolve(res, offs, s, dir)` | resolves the levels of every paragraph once; `res` holds one value for each code point and `offs` holds the byte offsets |
+| `bidi_resolved_level(res, i)` | the level of the code point `i` in a resolved text, before rule L1 |
+| `bidi_line_levels_from(out, res, start, limit)` | the levels of a line after rule L1; gives a fault code |
+| `bidi_line_order_from(out, res, start, limit)` | the visual order of a line after rules L1 and L2; the indexes count from the start of the text |
+| `bidi_reorder_from(out, s, res, offs, start, limit, flags)` | the UTF-8 bytes of a line in visual order, with the options of rules L3 and L4 |
+| `bidi_line_levels(out, s, dir, start, limit)`, `bidi_line_order(out, s, dir, start, limit)`, `bidi_reorder(out, s, dir, start, limit, flags)` | the same three results from the text; each call resolves the text again |
 | `is_emoji(cp)`, `is_emoji_presentation(cp)`, `is_emoji_modifier(cp)`, `is_emoji_modifier_base(cp)`, `is_emoji_component(cp)`, `is_extended_pictographic(cp)` | the emoji properties of the standard |
 | `is_zwj(cp)`, `is_emoji_presentation_selector(cp)`, `is_text_presentation_selector(cp)`, `is_regional_indicator(cp)`, `is_tag_character(cp)` | the code points that build emoji sequences |
 | `is_id_start(cp)`, `is_id_continue(cp)`, `is_xid_start(cp)`, `is_xid_continue(cp)` | the identifier properties of the standard |
@@ -884,30 +891,92 @@ The `bidi_levels` call runs the Unicode bidirectional algorithm (UAX #9)
 on a UTF-8 text. It gives one level per code point. An even level reads
 left to right and an odd level reads right to left. The text splits into
 paragraphs at each paragraph separator, and each paragraph takes its own
-level. The call returns the level of the first paragraph too.
+level. A CR followed by LF is one terminator.
 
 The code points that the algorithm removes get the level -1. These are
 the embedding and override marks and the boundary neutrals. The depth
-limit is 125, and the bracket stack holds 63 entries. The call applies the rules for
-isolates, paired brackets and the trailing white space. It treats the
-whole paragraph as one line.
+limit is 125, and the bracket stack holds 63 entries. The call applies
+the rules for isolates, paired brackets and the trailing white space. It
+treats the whole paragraph as one line. The `bidi_order` call reverses
+the runs of such a line by rule L2.
 
-The `bidi_order` call reverses the runs of a line by rule L2. It skips a
-code point of level -1. A level below -1 or above 126 gives `ERR_BAD_ARG`.
-The package leaves out the rules L3 and L4, which depend on the renderer.
+A renderer needs more than that. It must find the paragraphs, cut each
+one into lines and write each line in visual order. The line calls do
+this by the rules P1, L1, L2, L3 and L4.
+
+- `bidi_paragraphs` gives the start, the limit and the level of each
+  paragraph. A separator stays in the paragraph that it ends. A final
+  separator opens no paragraph. The empty text has no paragraph.
+- `bidi_resolve` resolves every paragraph once. The line calls with the
+  suffix `_from` then cut lines from the result. A caller with many
+  lines of one text pays for the resolution once.
+- `bidi_line_levels_from` applies rule L1 to a line. White space and
+  isolate formatting characters at the end of the line take the paragraph
+  level. So does white space before a separator.
+- `bidi_line_order_from` applies rules L1 and L2. It gives the index of
+  each code point of the line, counted from the start of the text.
+- `bidi_reorder_from` writes the line in visual order. Its `flags` are a
+  sum of three options, which take the values of the ICU library.
+
+| Option | Value | What it does |
+|---|---|---|
+| `BIDI_KEEP_BASE_COMBINING` | 1 | rule L3: a mark stays after its base in a right to left run |
+| `BIDI_DO_MIRRORING` | 2 | rule L4: a code point in a right to left run takes its mirror partner; U+FD3E and U+FD3F stay |
+| `BIDI_REMOVE_CONTROLS` | 8 | drops the code points of the property Bidi_Control |
+
+Any other bit of `flags` gives `ERR_BAD_ARG`. A line that crosses a
+paragraph, a bad range and a bad direction give `ERR_BAD_ARG` too. A
+bad byte gives `ERR_BAD_UTF8` with its offset. A text above `MAX_INPUT`
+gives `ERR_TOO_LONG`. A fault leaves the buffers of the caller empty.
 
 ```goose
 var levels: i64[>..] = [];
 let code, para = unicode::bidi_levels(levels, "ab אב", unicode::BIDI_DIR_AUTO);
 var order: i64[>..] = [];
 unicode::bidi_order(order, levels[..]);
+
+// Cut a text into lines once, then write each line.
+var res: i64[>..] = [];
+var offs: i64[>..] = [];
+unicode::bidi_resolve(res, offs, "ab אב (c)", unicode::BIDI_DIR_AUTO);
+var visual: u8[>..] = [];
+unicode::bidi_reorder_from(visual, "ab אב (c)", res[..], offs[..], 0, 9,
+    unicode::BIDI_DO_MIRRORING);
 ```
 
 The package agrees with every line of `BidiTest.txt` and
-`BidiCharacterTest.txt` of Unicode 18.0.0. Python has no such call in the
-standard library. Go holds `golang.org/x/text/unicode/bidi`, and Rust
-holds `unicode-bidi`. Both give a result per line, and this package
-gives the same levels for a line that spans the paragraph.
+`BidiCharacterTest.txt` of Unicode 18.0.0. It also agrees with ICU
+79.1 and the Rust crate `unicode-bidi` on a corpus of paragraphs, lines
+and written texts. The differences are these.
+
+- A removed code point gets the level of the code point before it. The
+  Rust crate and the standard say so. ICU gives it the level of the
+  code point after it. The line calls give a level to every code point.
+  The call `bidi_levels` still gives -1.
+- A CR followed by LF is one terminator, as in ICU. The Rust crate and
+  the Go library take it as two.
+- An empty line gives an empty result. ICU gives an error.
+- `BIDI_REMOVE_CONTROLS` follows the property Bidi_Control. ICU removes
+  ZWJ and ZWNJ, which are no Bidi_Control, and keeps U+061C.
+- With `BIDI_KEEP_BASE_COMBINING` ICU drops a mark whose base is a
+  removed control. The package keeps the mark. ICU also writes a line
+  of one direction as one run. A mark inside an isolate then stays in
+  place. The package follows the levels.
+- The Rust `reorder_line` returns the line unchanged when the levels of
+  the paragraph hold no odd level, before rule L1. The package follows
+  the standard and ICU, and reverses such a line when L1 gives it an
+  odd level.
+- ICU gives the options 4 (insert LRM for numbers) and 16 (output
+  reverse). The package leaves them out, and they give `ERR_BAD_ARG`.
+- The Go call `Paragraph.Line` runs the algorithm again on its slice. It
+  loses the embeddings that open before the line. This package keeps
+  the levels of the whole paragraph, as the standard says. Go handles
+  one paragraph for each call and never reorders its output. It has no
+  rule L3 and no rule L4.
+
+Python has no such call in the standard library. Rust has no rule L3
+and no rule L4 in `unicode-bidi`. The mirror pairs live in a second
+crate there.
 
 ## Width
 
@@ -1215,11 +1284,10 @@ if code == unicode::OK && out[0] == -1 {
 - The rule set of Unicode 17 differs on 548 in the loose style. The
   `neo` rule set matches ICU on every text of every style. The package
   follows ICU.
-- The bidirectional calls treat a paragraph as one line. A caller that
-  breaks a paragraph into lines passes the levels of each line to
-  `bidi_order`. The rules L3 and L4 depend on the renderer, and the
-  package leaves them out. So do the combining marks and the mirrored
-  glyphs. The `mirrored` call gives the mirror flag of a code point.
+- The calls `bidi_levels` and `bidi_order` treat a paragraph as one
+  line. The line calls cut a paragraph into lines, and they leave out the
+  ICU options 4 and 16. The call `bidi_levels` gives the level -1 to a
+  removed code point, and the line calls give it a level.
 - The package reads UTF-8, UTF-16 and UTF-32. It reads the byte order
   mark of UTF-8, UTF-16 and UTF-32. It reads no other encoding.
 - The numbers of the seven enumerated properties follow the alias file, not
@@ -1351,6 +1419,19 @@ beyond the reference libraries.
   caller. They write U+FFFD and no surrogate or value above U+10FFFF.
   Each lossy call reads each byte once, and its result holds at most one
   code point for each byte.
+- The paragraph split and the line calls read each code point a bounded
+  number of times. The resolution runs once for each paragraph. A line
+  costs its own length. A caller that cuts many lines of one text pays
+  for the resolution once.
+
+  The suite breaks one mebibyte of separators and of CR LF pairs. It
+  breaks one mebibyte of isolate initiators, of embedding initiators and
+  of trailing white space. It fails a call that takes five seconds or more.
+
+  Each call checks its bounds before it allocates. A line value that no
+  call of the package gives is a fault. A fault leaves the buffers of the
+  caller empty. The write call never writes more than 4 bytes for each
+  code point of the line.
 - The bidirectional algorithm reads the text a bounded number of times.
   The matching isolates hold a bounded number of entries. So do the
   first strong letter of each isolate, the bracket stack and the level
@@ -1474,6 +1555,7 @@ goose run examples/utf32.goose
 goose run examples/width.goose
 goose run examples/title.goose
 goose run examples/bidi.goose
+goose run examples/bidi_lines.goose
 goose run examples/flags.goose
 goose run examples/linebreak.goose
 goose run examples/linedict.goose

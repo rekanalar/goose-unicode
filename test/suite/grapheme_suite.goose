@@ -228,10 +228,10 @@ fn gb_count_equals_offsets() -> i64 {
 
 fn run_grapheme() -> i64 {
     var bad = 0;
-    bad += gb_cases();
-    bad += gb_named();
-    bad += gb_malformed();
-    bad += gb_faults();
-    bad += gb_count_equals_offsets();
+    if want("grapheme", "gb_cases") { bad += gb_cases(); }
+    if want("grapheme", "gb_named") { bad += gb_named(); }
+    if want("grapheme", "gb_malformed") { bad += gb_malformed(); }
+    if want("grapheme", "gb_faults") { bad += gb_faults(); }
+    if want("grapheme", "gb_count_equals_offsets") { bad += gb_count_equals_offsets(); }
     return bad;
 }

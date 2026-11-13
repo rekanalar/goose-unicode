@@ -319,9 +319,9 @@ fn dc_faults() -> i64 {
 
 fn run_dict() -> i64 {
     var bad: i64 = 0;
-    bad += dc_battery();
-    bad += dc_scenarios();
-    bad += dc_flags();
-    bad += dc_faults();
+    if want("dict", "dc_battery") { bad += dc_battery(); }
+    if want("dict", "dc_scenarios") { bad += dc_scenarios(); }
+    if want("dict", "dc_flags") { bad += dc_flags(); }
+    if want("dict", "dc_faults") { bad += dc_faults(); }
     return bad;
 }

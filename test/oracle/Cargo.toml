@@ -62,3 +62,7 @@ path = "restrict.rs"
 [[bin]]
 name = "sent"
 path = "sent.rs"
+
+[[bin]]
+name = "bidilines"
+path = "bidilines.rs"

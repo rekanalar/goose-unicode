@@ -236,11 +236,11 @@ fn sg_random() -> i64 {
 
 fn run_segment() -> i64 {
     var bad = 0;
-    bad += sg_cases();
-    bad += sg_named();
-    bad += sg_malformed();
-    bad += sg_faults();
-    bad += sg_hostile();
-    bad += sg_random();
+    if want("segment", "sg_cases") { bad += sg_cases(); }
+    if want("segment", "sg_named") { bad += sg_named(); }
+    if want("segment", "sg_malformed") { bad += sg_malformed(); }
+    if want("segment", "sg_faults") { bad += sg_faults(); }
+    if want("segment", "sg_hostile") { bad += sg_hostile(); }
+    if want("segment", "sg_random") { bad += sg_random(); }
     return bad;
 }

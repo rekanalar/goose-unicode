@@ -206,14 +206,14 @@ fn case_bound() -> i64 {
 
 fn run_case() -> i64 {
     var bad = 0;
-    bad += case_upper();
-    bad += case_lower();
-    bad += case_fold();
-    bad += case_named();
-    bad += case_fold_equal();
-    bad += case_faults();
-    bad += case_bound();
-    bad += case_nfkc_fold();
+    if want("case", "case_upper") { bad += case_upper(); }
+    if want("case", "case_lower") { bad += case_lower(); }
+    if want("case", "case_fold") { bad += case_fold(); }
+    if want("case", "case_named") { bad += case_named(); }
+    if want("case", "case_fold_equal") { bad += case_fold_equal(); }
+    if want("case", "case_faults") { bad += case_faults(); }
+    if want("case", "case_bound") { bad += case_bound(); }
+    if want("case", "case_nfkc_fold") { bad += case_nfkc_fold(); }
     return bad;
 }
 

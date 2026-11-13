@@ -134,10 +134,10 @@ fn prop_boundary() -> i64 {
 
 fn run_property() -> i64 {
     var bad = 0;
-    bad += prop_categories();
-    bad += prop_classes();
-    bad += prop_one_of_each();
-    bad += prop_outside();
-    bad += prop_boundary();
+    if want("property", "prop_categories") { bad += prop_categories(); }
+    if want("property", "prop_classes") { bad += prop_classes(); }
+    if want("property", "prop_one_of_each") { bad += prop_one_of_each(); }
+    if want("property", "prop_outside") { bad += prop_outside(); }
+    if want("property", "prop_boundary") { bad += prop_boundary(); }
     return bad;
 }

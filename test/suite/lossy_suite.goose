@@ -322,10 +322,10 @@ fn lz_faults() -> i64 {
 
 fn run_lossy() -> i64 {
     var bad: i64 = 0;
-    bad += lz_battery();
-    bad += lz_bom_battery();
-    bad += lz_scenarios();
-    bad += lz_checked();
-    bad += lz_faults();
+    if want("lossy", "lz_battery") { bad += lz_battery(); }
+    if want("lossy", "lz_bom_battery") { bad += lz_bom_battery(); }
+    if want("lossy", "lz_scenarios") { bad += lz_scenarios(); }
+    if want("lossy", "lz_checked") { bad += lz_checked(); }
+    if want("lossy", "lz_faults") { bad += lz_faults(); }
     return bad;
 }

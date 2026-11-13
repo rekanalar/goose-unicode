@@ -237,12 +237,12 @@ fn run_greek() -> i64 {
     bad += replay(GRK_UP_IN_POOL[..], GRK_UP_IN_OFF[..], GRK_UP_OUT_POOL[..], GRK_UP_OUT_OFF[..], "el upper", 0, unicode::LOCALE_EL);
     bad += replay(GRK_ONE_IN_POOL[..], GRK_ONE_IN_OFF[..], GRK_ONE_OUT_POOL[..], GRK_ONE_OUT_OFF[..], "el upper single", 0, unicode::LOCALE_EL);
     bad += replay(DUT_TI_IN_POOL[..], DUT_TI_IN_OFF[..], DUT_TI_OUT_POOL[..], DUT_TI_OUT_OFF[..], "nl title", 2, unicode::LOCALE_NL);
-    bad += grk_scenarios();
-    bad += grk_other();
-    bad += grk_tags();
-    bad += grk_faults();
-    bad += grk_hostile();
-    bad += grk_scalars();
+    if want("greek", "grk_scenarios") { bad += grk_scenarios(); }
+    if want("greek", "grk_other") { bad += grk_other(); }
+    if want("greek", "grk_tags") { bad += grk_tags(); }
+    if want("greek", "grk_faults") { bad += grk_faults(); }
+    if want("greek", "grk_hostile") { bad += grk_hostile(); }
+    if want("greek", "grk_scalars") { bad += grk_scalars(); }
     if bad > 0 { print("FAIL: Greek suite holds ", bad, " errors\n"); }
     return bad;
 }

@@ -291,15 +291,15 @@ fn test_equality() -> i64 {
 
 fn run_normalize() -> i64 {
     var bad = 0;
-    bad += test_conformance();
-    bad += test_quick_check();
-    bad += test_tricky();
-    bad += test_exclusions();
-    bad += test_blocked();
-    bad += test_hangul();
-    bad += test_long_run();
-    bad += norm_faults();
-    bad += test_equality();
-    bad += test_quick_random();
+    if want("norm", "test_conformance") { bad += test_conformance(); }
+    if want("norm", "test_quick_check") { bad += test_quick_check(); }
+    if want("norm", "test_tricky") { bad += test_tricky(); }
+    if want("norm", "test_exclusions") { bad += test_exclusions(); }
+    if want("norm", "test_blocked") { bad += test_blocked(); }
+    if want("norm", "test_hangul") { bad += test_hangul(); }
+    if want("norm", "test_long_run") { bad += test_long_run(); }
+    if want("norm", "norm_faults") { bad += norm_faults(); }
+    if want("norm", "test_equality") { bad += test_equality(); }
+    if want("norm", "test_quick_random") { bad += test_quick_random(); }
     return bad;
 }

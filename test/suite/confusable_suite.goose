@@ -150,9 +150,9 @@ fn cf_faults() -> i64 {
 
 fn run_confusable() -> i64 {
     var bad = 0;
-    bad += cf_rows();
-    bad += cf_strings();
-    bad += cf_pairs();
-    bad += cf_faults();
+    if want("confusable", "cf_rows") { bad += cf_rows(); }
+    if want("confusable", "cf_strings") { bad += cf_strings(); }
+    if want("confusable", "cf_pairs") { bad += cf_pairs(); }
+    if want("confusable", "cf_faults") { bad += cf_faults(); }
     return bad;
 }
