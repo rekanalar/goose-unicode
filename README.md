@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.30.0";
+import unicode from "rekanalar/goose-unicode@v0.31.0";
 ```
 
 ## API
@@ -167,6 +167,13 @@ import unicode from "rekanalar/goose-unicode@v0.30.0";
 | `sentence_locale_of(tag)` | the locale constant of a language tag, such as "en" or "de-DE" |
 | `compare(out, a, b)` | the sign of the root collation order of two texts: -1, 0 or 1 |
 | `sort_key(out, s)` | the sort key of the text: the primary, the secondary and the tertiary weights |
+| `compare_with(out, a, b, opts)` | the sign of the order of two texts under the options |
+| `sort_key_with(out, s, opts)` | the sort key of the text under the options |
+| `coll_options()` | the default options: tertiary strength, non-ignorable variable characters, no numeric order, no case order |
+| `CollOptions` | the struct of the options: the fields `strength`, `alternate`, `numeric` and `case_first`, all `i64` |
+| `STRENGTH_PRIMARY`, `STRENGTH_SECONDARY`, `STRENGTH_TERTIARY`, `STRENGTH_IDENTICAL` | the strength of the options: 0, 1, 2 and 15 |
+| `ALT_NON_IGNORABLE`, `ALT_SHIFTED` | the alternate handling of the options: 0 and 1 |
+| `CASE_OFF`, `CASE_LOWER_FIRST`, `CASE_UPPER_FIRST` | the case order of the options: 0, 1 and 2 |
 | `emoji_sequence_kinds(s)` | the mask of the kind of the text, when the whole text is one emoji sequence; 0 otherwise |
 | `is_rgi_emoji(s)` | true when the whole text is one emoji sequence of the standard |
 | `is_emoji_sequence(s, kind)` | true when the whole text is one sequence of a kind in the mask |
@@ -1115,6 +1122,73 @@ if code == unicode::OK && out[0] == -1 {
 }
 ```
 
+### The options of the collation
+
+The calls `compare_with` and `sort_key_with` take a `CollOptions`
+value. The call `coll_options` gives the default value. The default
+gives the same result as `compare` and `sort_key`.
+
+The struct holds four fields, all of type `i64`.
+
+| The field | The values | The default | The attribute of ICU |
+|---|---|---|---|
+| `strength` | `STRENGTH_PRIMARY` (0), `STRENGTH_SECONDARY` (1), `STRENGTH_TERTIARY` (2), `STRENGTH_IDENTICAL` (15) | `STRENGTH_TERTIARY` | `UCOL_STRENGTH` |
+| `alternate` | `ALT_NON_IGNORABLE` (0), `ALT_SHIFTED` (1) | `ALT_NON_IGNORABLE` | `UCOL_ALTERNATE_HANDLING` |
+| `numeric` | 0 off, 1 on | 0 | `UCOL_NUMERIC_COLLATION` |
+| `case_first` | `CASE_OFF` (0), `CASE_LOWER_FIRST` (1), `CASE_UPPER_FIRST` (2) | `CASE_OFF` | `UCOL_CASE_FIRST` |
+
+A field outside its range gives `ERR_BAD_ARG` and an empty buffer. The
+call checks the options before it reads the text.
+
+The strength keeps the levels up to its value. The primary strength
+ignores the accents and the case. The secondary strength counts the
+accents. The tertiary strength counts the case as well. The identical
+strength adds the code points of the canonical form after the tertiary
+level.
+
+The shifted handling drops the variable characters. A variable
+character is a space, a punctuation or a symbol. The handling drops
+the element of the table and the elements without a primary weight
+that follow it. So the text "a-b" and the text "ab" sort equal. This
+is the option that Node calls `ignorePunctuation`.
+
+The variable band of the table runs from the primary weight 0x0201 to
+the primary weight 0x04E4. The band holds 883 code points. The suite
+checks the pairs of the band against the ICU library 79.1.
+
+The numeric order makes a run of digits one number. The leading zeros
+do not count. The run "9" sorts before the run "10". The digits of
+every script take part. The number sorts after the variable characters
+and before the letters.
+
+The count of the digits comes first, then the digits. The count has a
+fixed width of seven decimal digits, since the input limit is 1,048,576
+bytes. A run of only zeros gives the number zero, so it sorts equal to
+the text "0".
+
+The case order changes the tertiary level. The upper case first puts
+"A" before "a". The lower case first puts "a" before "A". The order
+off leaves the lower case first, as the root table does.
+
+```goose
+var out: i64[>..] = [];
+var opts = unicode::coll_options();
+opts.numeric = 1;
+let code, offset = unicode::compare_with(out, "file9", "file10", opts);
+if code == unicode::OK && out[0] == -1 {
+    print("file9 sorts before file10\n");
+}
+```
+
+The options add 0 bytes of data table to the package. Every option
+reads the table that the package already holds. The suite checks 216,664
+distinct texts, which give 583,328 signs, against the ICU library 79.1.
+
+Node 22 and the Rust crate `icu_collator` 2.4.0 agree with the ICU
+library on 2,000 pairs of each option. The script
+`test/collopt_battery.py` prints the counts. Node has no option for the
+identical strength, so it stays out of that row.
+
 ## Limits
 
 - The model engine of the word and line calls covers Thai and Burmese only.
@@ -1359,14 +1433,25 @@ if code == unicode::OK && out[0] == -1 {
   `Modifier_Combining_Mark` and the two `ID_Compat_Math` ones. The ICU
   library is the only oracle for those five. The Rust
   `icu_properties` crate is no oracle of this package.
-- The collation follows the root locale and no tailoring. The strength,
-  the alternate shifted weighting, the numeric order, the case options
-  and the script reordering stay out. A caller that needs a locale gets
-  the root order here.
+- The collation follows the root locale and no tailoring. The tailorings
+  by locale stay out. A caller that needs a locale gets the root order
+  here.
+- The case level and the quaternary strength stay out. The ICU library
+  and the Rust crate offer them. The root table of CLDR holds no fourth
+  level, and it holds no case bits of ICU.
 - The Han ideographs order by the implicit weights of the algorithm. ICU
   79 and Node order the Han script by the Unihan radical stroke order.
   Go, Rust and the conformance file of the standard follow the implicit
   weights, as this package does.
+- The numeric order counts the digits of a run and then gives one weight
+  per digit. The ICU library packs the number into its own byte
+  encoding. Both orders agree on the order of the texts. The keys of
+  the two differ.
+- The case order adds a case bit above the tertiary weight. The ICU
+  library uses the same rule. The keys of the two differ. Every weight
+  of the key stays below 65,536 under every option. A caller can pack
+  the key into 16 bits. The identical strength adds the code points of
+  the text, and those need more than 16 bits.
 - The four references carry tables of different Unicode versions. Take
   50,000 random pairs of the whole range. ICU 79.1 differs from Node
   (ICU 78) on 207 pairs, from Rust on 165 and from Go on 560. Most
@@ -1448,6 +1533,28 @@ beyond the reference libraries.
 - The lookup of the identifier profile uses a binary search over 1,650
   ranges. So the time of one code point does not grow with the size of
   the profile.
+- The collation calls check every option value before they read the
+  text. A field outside its range gives `ERR_BAD_ARG` and an empty
+  buffer. So a bad option cannot make the walk read past the table.
+- The collation calls check the bound of the key after each step of the
+  walk. A run of digits adds its weights to the bound before it writes
+  them. A run of 1,048,576 digits gives 1,048,583 weights, and the
+  bound holds 4,194,304. The identical strength adds the code points of
+  the text to the key. So a text of the input limit gives `ERR_TOO_LONG`.
+- A code point with a long expansion grows the key faster than the text
+  grows. The ligature U+FDFA gives eighteen weights for each three bytes.
+  So a text of 300,000 bytes gives a key above the bound.
+  The call gives `ERR_TOO_LONG` even when the text stays under the input
+  limit.
+- The numeric order gives a run of n digits 7+n weights. So a text of
+  many short runs grows the key faster than the text grows.
+  A text of one mebibyte of alternating digits and letters gives
+  `ERR_TOO_LONG`. The ICU library packs a number into fewer bytes, so
+  it accepts such a text.
+- The work of a collation call grows in step with the length of the
+  text. The suite breaks one mebibyte of letters with every option and
+  one mebibyte of digits with the numeric order. Each call ends in
+  under two seconds.
 - The whole script test makes two passes over the code points. It takes
   at most 17 scripts for each code point. So a hostile text of many code points
   cannot take quadratic time.
@@ -1605,6 +1712,12 @@ The suite of the package holds the cases of the model engine. The script
 `test/make_lstm_cases.py` writes them. The script `test/lstm_battery.py`
 compares the package with ICU, Node and Rust on seeded texts.
 
+The suite also holds the cases of the collation options. The script
+`test/make_collopt_cases.py` writes them. The oracle
+`test/oracle/csrc/collopt.c` gives the sign of each pair with the ICU
+library 79.1. The script needs ICU 79.1, so it runs on the machine of
+the maintainer. The user of the package needs nothing but the package.
+
 ```bash
 goose run test/run.goose
 goose run examples/normalize.goose
@@ -1624,6 +1737,7 @@ goose run examples/linebreak.goose
 goose run examples/linedict.goose
 goose run examples/locales.goose
 goose run examples/collate.goose
+goose run examples/collate_options.goose
 goose run examples/properties.goose
 goose run examples/casefold.goose
 goose run examples/confusable.goose
@@ -1633,6 +1747,9 @@ goose run examples/chars.goose
 goose run examples/scripts.goose
 goose run examples/restrict.goose
 goose run examples/lstm_words.goose
+goose run examples/emoji_seq.goose
+goose run examples/locale.goose
+goose run examples/lossy.goose
 ```
 
 The scripts under `test/` build the tables of the package. They read the

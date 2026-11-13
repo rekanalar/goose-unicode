@@ -2,10 +2,11 @@
 //
 // The order is the CLDR root collation. The variable weighting is
 // non-ignorable: a variable character keeps its primary weight. The
-// case order is lower case first, through the tertiary level. A code
-// point with no table row takes the implicit weights of UTS #10. The
-// table holds contractions of up to three code points, and the
-// longest match wins.
+// case order is lower case first, through the tertiary level. The options
+// of collate_opts change the strength, the variable weighting, the digits
+// and the case order. A code point with no table row takes the implicit
+// weights of UTS #10. The table holds contractions of up to three code
+// points, and the longest match wins.
 namespace unicode;
 
 import std;
@@ -68,18 +69,78 @@ fn coll_trailing_mark(g: i64) -> bool {
     return false;
 }
 
+// The state of a walk: the options that act inside it, and the flag
+// that the last element dropped out.
+struct CollState {
+    alternate: i64,   // the alternate handling: 0 non-ignorable, 1 shifted
+    dropped: i64,     // 1 when the last element dropped out
+    case_first: i64,  // the case order: 0 off, 1 lower first, 2 upper first
+    numeric: i64,     // 1 when a run of digits is one number
+    strength: i64,    // the strength: the levels that the key holds
+}
+
+// The lowest primary weight of the digit zero in the table.
+const COLL_DIGIT_BASE: i64 = 0x2278;
+// The lowest primary weight of a number. The numbers take the ten
+// weights below the digits of the table.
+const COLL_NUM_BASE: i64 = 0x2268;
+// The highest primary weight of a variable element. The weights 0x0201
+// to 0x04E4 hold the spaces, the punctuation and the symbols that the
+// table marks as variable.
+const COLL_VAR_LAST: i64 = 0x04E4;
+
+// A primary weight as the walk stores it. The numeric order gives the
+// numbers the ten weights below the digits, so every weight below the
+// digits moves down by 16 and sorts before the numbers. The weights of
+// the table above the digits keep their value, so every weight of the
+// key stays below 0x10000.
+fn coll_primary(st: CollState&, p: i64) -> i64 {
+    if st.numeric == 1 && p < COLL_DIGIT_BASE { return p - 16; }
+    return p;
+}
+
+// The upper case tertiary weights of the table. Each weight sets one
+// bit. The table holds no tertiary weight above 30.
+const COLL_UPPER_MASK: i64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
+    | (1 << 12) | (1 << 14) | (1 << 17) | (1 << 18) | (1 << 29);
+
+// A tertiary weight as the walk stores it. The case order puts a case
+// bit above the weight. The nine upper case weights of the table decide
+// the class of an element. The bit sits at the weight 0x20, above every
+// tertiary weight of the table, so the value stays below 0x10000.
+fn coll_tertiary(st: CollState&, t: i64) -> i64 {
+    if st.case_first == 0 { return t; }
+    let upper = (COLL_UPPER_MASK >> t) & 1 == 1;
+    var bit: i64 = 0;
+    if st.case_first == 1 && upper { bit = 1; }
+    if st.case_first == 2 && !upper { bit = 1; }
+    return (bit << 5) | t;
+}
+
 // Appends the elements of one unit to the three level buffers. A
-// primary of 0000 stays out of the first level. The caller checks the
-// total bound.
-fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, unit: i64) {
+// primary of 0000 stays out of the first level. The shifted handling
+// drops a variable element, and the elements without a primary weight
+// that follow it. The caller checks the total bound.
+fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, unit: i64) {
     let start = COLL_EOFF[unit];
     let stop = COLL_EOFF[unit + 1];
     for e in start..stop {
+        let p = COLL_P[e];
+        if st.alternate == 1 {
+            if (p > 0x0200 && p <= COLL_VAR_LAST) || (p == 0 && st.dropped == 1) {
+                st.dropped = 1;
+                continue;
+            }
+            st.dropped = 0;
+        }
         // A weight of 0000 stays out of its level: an element with
-        // nothing at a level holds that level back.
-        if COLL_P[e] != 0 { l1.push(COLL_P[e]); }
-        if COLL_S[e] != 0 { l2.push(COLL_S[e]); }
-        if COLL_T[e] != 0 { l3.push(COLL_T[e]); }
+        // nothing at a level holds that level back. A level above the
+        // strength holds no weight, because the key keeps no level.
+        if p != 0 { l1.push(coll_primary(st, p)); }
+        if st.strength >= STRENGTH_SECONDARY && COLL_S[e] != 0 { l2.push(COLL_S[e]); }
+        if st.strength >= STRENGTH_TERTIARY && COLL_T[e] != 0 {
+            l3.push(coll_tertiary(st, COLL_T[e]));
+        }
     }
 }
 
@@ -90,13 +151,13 @@ fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, unit: i64) {
 // plane of the unified ideographs, and the rest the base of the
 // unassigned code points. Each group appends the base with the common
 // secondary and tertiary weights, then the tail as a second primary.
-fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cp: i64) {
+fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cp: i64) {
     if cp >= 0xAC00 && cp <= 0xD7A3 {
         let s = cp - 0xAC00;
-        coll_jamo(l1, l2, l3, 0x1100 + s / 588);
-        coll_jamo(l1, l2, l3, 0x1161 + (s % 588) / 28);
+        coll_jamo(l1, l2, l3, st, 0x1100 + s / 588);
+        coll_jamo(l1, l2, l3, st, 0x1161 + (s % 588) / 28);
         let t = s % 28;
-        if t > 0 { coll_jamo(l1, l2, l3, 0x11A7 + t); }
+        if t > 0 { coll_jamo(l1, l2, l3, st, 0x11A7 + t); }
         return;
     }
     var aaaa: i64 = 0xFBC0 + (cp >> 15);
@@ -110,28 +171,29 @@ fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cp: i64) {
     } else if run_at(COLL_HANO_S[..], COLL_HANO_E[..], cp) >= 0 {
         aaaa = 0xFB80 + (cp >> 15);
     }
-    l1.push(aaaa);
-    l2.push(0x0020);
-    l3.push(0x0002);
-    l1.push(bbbb);
+    st.dropped = 0;
+    l1.push(coll_primary(st, aaaa));
+    if st.strength >= STRENGTH_SECONDARY { l2.push(0x0020); }
+    if st.strength >= STRENGTH_TERTIARY { l3.push(coll_tertiary(st, 0x0002)); }
+    l1.push(coll_primary(st, bbbb));
 }
 
 // Appends the elements of one Hangul jamo. Every jamo holds a row.
-fn coll_jamo(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, jamo: i64) {
+fn coll_jamo(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, jamo: i64) {
     let unit = coll_single_unit(jamo);
     if unit >= 0 {
-        coll_unit_levels(l1, l2, l3, unit);
+        coll_unit_levels(l1, l2, l3, st, unit);
     }
 }
 
 // Appends the weights of one plain code point: its row, or the
 // implicit weights. A skipped mark takes this path.
-fn coll_single(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cp: i64) {
+fn coll_single(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cp: i64) {
     let single = coll_single_unit(cp);
     if single >= 0 {
-        coll_unit_levels(l1, l2, l3, single);
+        coll_unit_levels(l1, l2, l3, st, single);
     } else {
-        coll_implicit(l1, l2, l3, cp);
+        coll_implicit(l1, l2, l3, st, cp);
     }
 }
 
@@ -148,12 +210,12 @@ const COLL_MAX_SKIP: i64 = 32;
 // across marks stops at a starter, at the mark cap, and when the
 // combining class of the last skipped mark is not smaller than the
 // class of the next mark.
-fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cps: const i64[:], i: i64) -> i64 {
+fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64 {
     let cp = cps[i];
     let n = cps.len;
     let g = find_exact(COLL_FIRST[..], cp);
     if g < 0 {
-        coll_single(l1, l2, l3, cp);
+        coll_single(l1, l2, l3, st, cp);
         return 1;
     }
     var c2: i64 = -1;
@@ -165,13 +227,13 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cps: const i64[:], i: 
     var u2: i64 = -1;
     if c3 >= 0 { u2 = coll_find_rec(g, c2, c3); }
     if u2 >= 0 {
-        coll_unit_levels(l1, l2, l3, u2);
+        coll_unit_levels(l1, l2, l3, st, u2);
         return 3;
     }
     var u1: i64 = -1;
     if c2 >= 0 { u1 = coll_find_rec(g, c2, -1); }
     if u1 >= 0 && !coll_has_deep(g, c2) {
-        coll_unit_levels(l1, l2, l3, u1);
+        coll_unit_levels(l1, l2, l3, st, u1);
         return 2;
     }
     // The discontiguous match: the mark that failed to extend the
@@ -179,23 +241,23 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cps: const i64[:], i: 
     // point that completes the contraction. The state is 0 when no
     // tail code point matched yet, and 1 when c2 matched as the tail
     // of a contraction of two code points.
-    var st: i64 = 0;
+    var ms: i64 = 0;
     var m0: i64 = -1;
     if u1 >= 0 {
         if c3 < 0 || combining_class(c3) == 0 || !coll_trailing_mark(g) {
-            coll_unit_levels(l1, l2, l3, u1);
+            coll_unit_levels(l1, l2, l3, st, u1);
             return 2;
         }
-        st = 1;
+        ms = 1;
         m0 = i + 2;
     } else if c2 >= 0 {
         if combining_class(c2) == 0 || !coll_trailing_mark(g) {
-            coll_single(l1, l2, l3, cp);
+            coll_single(l1, l2, l3, st, cp);
             return 1;
         }
         m0 = i + 1;
     } else {
-        coll_single(l1, l2, l3, cp);
+        coll_single(l1, l2, l3, st, cp);
         return 1;
     }
     var prev = combining_class(cps[m0]);
@@ -213,26 +275,26 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cps: const i64[:], i: 
         if cc == 0 || skipped >= COLL_MAX_SKIP { break; }
         if prev < cc {
             var u: i64 = -1;
-            if st == 2 {
+            if ms == 2 {
                 u = coll_find_rec(g, mt, c);
-            } else if st == 1 {
+            } else if ms == 1 {
                 u = coll_find_rec(g, c2, c);
             } else {
                 u = coll_find_rec(g, c, -1);
             }
             if u >= 0 {
-                if st == 0 && coll_has_deep(g, c) {
+                if ms == 0 && coll_has_deep(g, c) {
                     mp = p;
                     mu = u;
                     mt = c;
-                    st = 2;
+                    ms = 2;
                     p += 1;
                     skipped = 0;
                     continue;
                 }
-                coll_unit_levels(l1, l2, l3, u);
+                coll_unit_levels(l1, l2, l3, st, u);
                 for k in m0..p {
-                    if k != mp { coll_single(l1, l2, l3, cps[k]); }
+                    if k != mp { coll_single(l1, l2, l3, st, cps[k]); }
                 }
                 return p + 1 - i;
             }
@@ -241,83 +303,19 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, cps: const i64[:], i: 
         p += 1;
         skipped += 1;
     }
-    if st == 1 {
-        coll_unit_levels(l1, l2, l3, u1);
+    if ms == 1 {
+        coll_unit_levels(l1, l2, l3, st, u1);
         return 2;
     }
     if mp >= 0 {
-        coll_unit_levels(l1, l2, l3, mu);
+        coll_unit_levels(l1, l2, l3, st, mu);
         for k in m0..mp {
-            coll_single(l1, l2, l3, cps[k]);
+            coll_single(l1, l2, l3, st, cps[k]);
         }
         return mp + 1 - i;
     }
-    coll_single(l1, l2, l3, cp);
+    coll_single(l1, l2, l3, st, cp);
     return 1;
-}
-
-// Decodes s, decomposes the text to the canonical form of the
-// standard and fills the three level buffers. The canonical form puts
-// each run of marks in the order that the weights expect. On a fault
-// the buffers are empty.
-fn coll_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, s: const u8[:]) -> i64, i64 {
-    l1.clear();
-    l2.clear();
-    l3.clear();
-    if s.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
-    var raw: i64[>..] = [];
-    var cps: i64[>..] = [];
-    let code, off = utf8_decode(raw, s);
-    if code != OK { return code, off; }
-    let nfd = normalize_cps(cps, raw[..], FORM_NFD);
-    if nfd != OK { return nfd, -1; }
-    var i: i64 = 0;
-    while i < cps.len {
-        let n = coll_step(l1, l2, l3, cps[..], i);
-        // The three separators of the key count toward the bound.
-        if l1.len + l2.len + l3.len + 3 > MAX_OUTPUT {
-            l1.clear();
-            l2.clear();
-            l3.clear();
-            return ERR_TOO_LONG, -1;
-        }
-        i += n;
-    }
-    return OK, -1;
-}
-
-// Assembles the key from the three level buffers. Each weight holds
-// its 16-bit value. The byte 1 ends each level and the byte 0 ends the
-// key. No weight holds 0 or 1, so the order of the keys equals the
-// order of the levels. A text with no code point gives the empty key.
-fn coll_assemble(out: i64[>..]&, l1: const i64[:], l2: const i64[:], l3: const i64[:]) {
-    for k in 0..l1.len { out.push(l1[k]); }
-    out.push(1);
-    for k in 0..l2.len { out.push(l2[k]); }
-    out.push(1);
-    for k in 0..l3.len { out.push(l3[k]); }
-    out.push(0);
-}
-
-// Gives the sort key of s in out: the primary weights, then the
-// secondary weights, then the tertiary weights, as their 16-bit
-// values. Each level ends with the byte 1 and the key ends with the
-// byte 0. A text with
-// no code point gives the empty key. The sign of the comparison of two
-// keys equals the sign of compare of the two texts. A bad byte gives
-// ERR_BAD_UTF8 and the offset of the first bad byte. A text above
-// MAX_INPUT or a key above MAX_OUTPUT gives ERR_TOO_LONG. Either fault
-// leaves out empty.
-fn sort_key(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
-    out.clear();
-    var l1: i64[>..] = [];
-    var l2: i64[>..] = [];
-    var l3: i64[>..] = [];
-    let code, off = coll_levels(l1, l2, l3, s);
-    if code != OK { return code, off; }
-    if s.len == 0 { return OK, -1; }
-    coll_assemble(out, l1[..], l2[..], l3[..]);
-    return OK, -1;
 }
 
 // The sign of the new region of two level buffers from the mark. 0
@@ -352,6 +350,19 @@ fn coll_level_sign(a: const i64[:], b: const i64[:]) -> i64 {
     return 0;
 }
 
+// Gives the sort key of s in out: the primary weights, then the
+// secondary weights, then the tertiary weights, as their 16-bit
+// values. Every option keeps the weights below 0x10000, except the
+// code points that the identical strength adds. Each level ends with the byte 1 and the key ends with the
+// byte 0. A text with no weight at any level gives the empty key. The
+// sign of the comparison of two keys equals the sign of compare of the
+// two texts. A bad byte gives ERR_BAD_UTF8 and the offset of the first
+// bad byte. A text above MAX_INPUT or a key above MAX_OUTPUT gives
+// ERR_TOO_LONG. Either fault leaves out empty.
+fn sort_key(out: i64[>..]&, s: const u8[:]) -> i64, i64 {
+    return sort_key_with(out, s, coll_options());
+}
+
 // Gives the sign of the root collation order of a and b in out: -1, 0
 // or 1. The call decodes both texts, decomposes each to the canonical
 // form, and walks both at once. It stops on the first difference of
@@ -360,67 +371,5 @@ fn coll_level_sign(a: const i64[:], b: const i64[:]) -> i64 {
 // ERR_BAD_UTF8 and the offset in b. A text above MAX_INPUT gives
 // ERR_TOO_LONG. Either fault leaves out empty.
 fn compare(out: i64[>..]&, a: const u8[:], b: const u8[:]) -> i64, i64 {
-    out.clear();
-    if a.len > MAX_INPUT || b.len > MAX_INPUT { return ERR_TOO_LONG, -1; }
-    var ra: i64[>..] = [];
-    var rb: i64[>..] = [];
-    var ca: i64[>..] = [];
-    var cb: i64[>..] = [];
-    let code, off = utf8_decode(ra, a);
-    if code != OK { return code, off; }
-    let na = normalize_cps(ca, ra[..], FORM_NFD);
-    if na != OK { return na, -1; }
-    let code2, off2 = utf8_decode(rb, b);
-    if code2 != OK { return code2, off2; }
-    let nb = normalize_cps(cb, rb[..], FORM_NFD);
-    if nb != OK { return nb, -1; }
-    var l1: i64[>..] = [];
-    var l2: i64[>..] = [];
-    var l3: i64[>..] = [];
-    var m1: i64[>..] = [];
-    var m2: i64[>..] = [];
-    var m3: i64[>..] = [];
-    var s1: i64 = 0;
-    var s2: i64 = 0;
-    var s3: i64 = 0;
-    var p1: i64 = 0;
-    var p2: i64 = 0;
-    var p3: i64 = 0;
-    var i: i64 = 0;
-    var j: i64 = 0;
-    while i < ca.len || j < cb.len {
-        if i < ca.len {
-            let n = coll_step(l1, l2, l3, ca[..], i);
-            i += n;
-        }
-        if j < cb.len {
-            let n = coll_step(m1, m2, m3, cb[..], j);
-            j += n;
-        }
-        if l1.len + l2.len + l3.len > MAX_OUTPUT
-            || m1.len + m2.len + m3.len > MAX_OUTPUT {
-            return ERR_TOO_LONG, -1;
-        }
-        if s1 == 0 {
-            s1 = coll_region_sign(l1[..], m1[..], p1);
-            p1 = coll_min(l1.len, m1.len);
-        }
-        if s2 == 0 {
-            s2 = coll_region_sign(l2[..], m2[..], p2);
-            p2 = coll_min(l2.len, m2.len);
-        }
-        if s3 == 0 {
-            s3 = coll_region_sign(l3[..], m3[..], p3);
-            p3 = coll_min(l3.len, m3.len);
-        }
-        if s1 != 0 { break; }
-    }
-    var sign: i64 = s1;
-    if sign == 0 { sign = coll_level_sign(l1[..], m1[..]); }
-    if sign == 0 { sign = s2; }
-    if sign == 0 { sign = coll_level_sign(l2[..], m2[..]); }
-    if sign == 0 { sign = s3; }
-    if sign == 0 { sign = coll_level_sign(l3[..], m3[..]); }
-    out.push(sign);
-    return OK, -1;
+    return compare_with(out, a, b, coll_options());
 }

@@ -40,8 +40,55 @@ groups_for() {
         lstm.goose) echo "lstm" ;;
         word.goose) echo "lstm segment dict" ;;
         linebreak.goose) echo "lstm line_dict" ;;
+        collate.goose) echo "collopt" ;;
+        collate_opts.goose) echo "collopt" ;;
         *) echo "" ;;
     esac
+}
+
+# run_probe_pair <name> <file> <old1> <new1> <old2> <new2>
+# A probe that changes two rules of one file.
+run_probe_pair() {
+    local name="$1" file="$2" old1="$3" new1="$4" old2="$5" new2="$6"
+    if [ -n "${MUTATE_ONLY:-}" ] && [[ "$name" != *"$MUTATE_ONLY"* ]]; then return; fi
+    local copy="$work/$name"
+    local groups
+    groups="$(groups_for "$file")"
+    probes=$((probes + 1))
+    rm -rf "$copy"
+    cp -r "$pkg" "$copy"
+    python3 - "$copy/$file" "$old1" "$new1" "$old2" "$new2" <<'RULE'
+import sys
+path, old1, new1, old2, new2 = sys.argv[1:6]
+text = open(path, encoding="utf-8").read()
+if old1 not in text or old2 not in text:
+    sys.exit(1)
+text = text.replace(old1, new1, 1).replace(old2, new2, 1)
+open(path, "w", encoding="utf-8").write(text)
+RULE
+    if [ $? -ne 0 ]; then
+        echo "FAIL: the probe $name did not find its rules"
+        fails=$((fails + 1))
+        return
+    fi
+    local code group
+    for group in $groups; do
+        (cd "$copy" && UNICODE_SUITES="$group" "$goose_bin" run test/run.goose >/dev/null 2>&1)
+        code=$?
+        if [ "$code" -ne 0 ]; then
+            echo "ok: the probe $name made the test program fail"
+            return
+        fi
+    done
+    (cd "$copy" && "$goose_bin" run test/run.goose >/dev/null 2>&1)
+    code=$?
+    if [ "$code" -eq 0 ]; then
+        echo "FAIL: the probe $name left the test program green"
+        fails=$((fails + 1))
+        return
+    fi
+    echo "NEEDS THE FULL SUITE $name: the groups $groups do not catch it"
+    fails=$((fails + 1))
 }
 
 # run_probe <name> <file> <old text> <new text>
@@ -391,6 +438,70 @@ run_probe lstm_cluster_limit lstm.goose \
 run_probe lstm_model_input lstm.goose \
     'if engine == SEG_MODEL && n > MAX_MODEL_INPUT { return ERR_TOO_LONG; }' \
     'if engine == SEG_MODEL && n > 1000000000 { return ERR_TOO_LONG; }'
+
+# The options of the collation. Each probe flips one rule of the walk.
+run_probe collopt_variable_limit collate.goose \
+    'const COLL_VAR_LAST: i64 = 0x04E4;' \
+    'const COLL_VAR_LAST: i64 = 0x04DF;'
+run_probe collopt_variable_follow collate.goose \
+    'if (p > 0x0200 && p <= COLL_VAR_LAST) || (p == 0 && st.dropped == 1) {' \
+    'if (p > 0x0200 && p <= COLL_VAR_LAST) {'
+run_probe collopt_numeric_zeros collate_opts.goose \
+    'while k < j - 1 && coll_digit_value(cps[k]) == 0 { k += 1; }' \
+    'while k < j - 1 && false { k += 1; }'
+run_probe collopt_numeric_digits collate_opts.goose \
+    'for m in k..j { l1.push(COLL_NUM_BASE + coll_digit_value(cps[m])); }' \
+    'for m in k..j { l1.push(COLL_NUM_BASE + (9 - coll_digit_value(cps[m]))); }'
+run_probe collopt_case_polarity collate.goose \
+    'if st.case_first == 1 && upper { bit = 1; }' \
+    'if st.case_first == 1 && !upper { bit = 1; }'
+run_probe collopt_case_shift collate.goose \
+    'return (bit << 5) | t;' \
+    'return (bit | t);'
+# The numbers sit below the digits. A shift upward gives a weight above
+# 16 bits to the last code points of the range.
+run_probe collopt_weight_shift collate.goose \
+    'if st.numeric == 1 && p < COLL_DIGIT_BASE { return p - 16; }' \
+    'if st.numeric == 1 && p >= COLL_DIGIT_BASE { return p + 16; }'
+# The identical key counts the separator and the terminator.
+run_probe collopt_identical_bound collate_opts.goose \
+    'if out.len + cps.len + 2 > MAX_OUTPUT {' \
+    'if out.len + cps.len + 1 > MAX_OUTPUT {'
+run_probe collopt_strength_check collate_opts.goose \
+    'if s != STRENGTH_PRIMARY && s != STRENGTH_SECONDARY && s != STRENGTH_TERTIARY' \
+    'if s != STRENGTH_PRIMARY && s != STRENGTH_SECONDARY && s != STRENGTH_TERTIARY && s != 4'
+run_probe collopt_compare_bound collate_opts.goose \
+    'if coll_over(l1[..], l2[..], l3[..], o.strength, 0)
+            || coll_over(m1[..], m2[..], m3[..], o.strength, 0) {' \
+    'if coll_over(l1[..], l2[..], l3[..], o.strength, 4 * MAX_OUTPUT)
+            || coll_over(m1[..], m2[..], m3[..], o.strength, 4 * MAX_OUTPUT) {'
+
+# The bound of a numeric run. The run adds its weights to the bound
+# before it writes them, and the walk checks the bound after each step.
+# The probe takes both checks out, so no bound of the key holds.
+run_probe_pair collopt_no_bound collate_opts.goose \
+    'return n > MAX_OUTPUT;' 'return n > 4 * MAX_OUTPUT;' \
+    'if n > MAX_OUTPUT { return j - i, true; }' \
+    'if n > 4 * MAX_OUTPUT { return j - i, true; }'
+
+# The bound of the key counts the levels up to the strength. The key of
+# the primary strength holds the primary level alone.
+run_probe collopt_strength_bound collate_opts.goose \
+    'if strength >= STRENGTH_SECONDARY { n += l2.len + 1; }' \
+    'if strength >= STRENGTH_SECONDARY { n += l2.len + 1; } n += l2.len;'
+
+# The case class of an element. The nine upper case weights decide it.
+# The weight 0x08 holds the upper case letters. The probe takes that bit
+# out of the mask, so the letters lose their upper case class.
+run_probe collopt_case_mask collate.goose \
+    'const COLL_UPPER_MASK: i64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)' \
+    'const COLL_UPPER_MASK: i64 = (1 << 9) | (1 << 10) | (1 << 11)'
+
+# The bound of the key. The sum of the levels of the strength and the
+# separators gives the size of the key.
+run_probe collopt_output_bound collate_opts.goose \
+    'return n > MAX_OUTPUT;' \
+    'return n > 4 * MAX_OUTPUT;'
 
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi

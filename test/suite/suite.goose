@@ -51,6 +51,8 @@ import script_cases;
 import script_suite;
 import coll_cases;
 import coll_suite;
+import collopt_cases;
+import collopt_suite;
 import locale_cases;
 import locale_suite;
 import greek_cases;

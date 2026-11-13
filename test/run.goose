@@ -95,6 +95,7 @@ fn run_group(name: const u8[:]) -> i64 {
     if every || name == "char" { bad += suite::run_char(); ran += 1; }
     if every || name == "script" { bad += suite::run_script(); ran += 1; }
     if every || name == "coll" { bad += suite::run_coll(); ran += 1; }
+    if every || name == "collopt" { bad += suite::run_collopt(); ran += 1; }
     if every || name == "locale" { bad += suite::run_locale(); ran += 1; }
     if every || name == "greek" { bad += suite::run_greek(); ran += 1; }
     if every || name == "dict" { bad += suite::run_dict(); ran += 1; }

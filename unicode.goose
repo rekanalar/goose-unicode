@@ -56,6 +56,7 @@ import bidi;
 import bidi_line;
 import linebreak;
 import coll_data;
+import collate_opts;
 import collate;
 import confusable_data;
 import confusable;

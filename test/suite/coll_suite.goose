@@ -3,30 +3,10 @@ namespace suite;
 
 import std;
 import unicode from "../..";
+import util;
 
 fn co_check(ok: bool, name: const u8[:]) -> i64 {
-    if !ok { print("FAIL: collation ", name, "\n"); return 1; }
-    return 0;
-}
-
-fn co_min(a: i64, b: i64) -> i64 {
-    if a < b { return a; }
-    return b;
-}
-
-// The byte order of two keys: -1, 0 or 1. A shorter key that is a
-// prefix of the other orders first.
-fn co_key_sign(a: const i64[:], b: const i64[:]) -> i64 {
-    let n = co_min(a.len, b.len);
-    for k in 0..n {
-        if a[k] != b[k] {
-            if a[k] < b[k] { return -1; }
-            return 1;
-        }
-    }
-    if a.len < b.len { return -1; }
-    if a.len > b.len { return 1; }
-    return 0;
+    return check("collation", name, ok);
 }
 
 // One compare call against the wanted sign.
@@ -80,7 +60,7 @@ fn co_samples() -> i64 {
             bad += co_check(false, "sample fault");
             continue;
         }
-        let ks = co_key_sign(k1[..], k2[..]);
+        let ks = key_sign(k1[..], k2[..]);
         if ks != out[0] {
             bad += co_check(false, "key and compare disagree");
         }
@@ -138,7 +118,7 @@ fn co_replay() -> i64 {
             if c1 != unicode::OK || c2 != unicode::OK {
                 bad += 1;
                 if bad <= 5 { print("FAIL: key fault at line ", i, "\n"); }
-            } else if co_key_sign(k1[..], k2[..]) != -(CC_REL[i] as i64) {
+            } else if key_sign(k1[..], k2[..]) != -(CC_REL[i] as i64) {
                 bad += 1;
                 if bad <= 5 { print("FAIL: key order at line ", i, "\n"); }
             }
