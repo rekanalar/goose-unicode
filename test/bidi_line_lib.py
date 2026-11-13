@@ -191,6 +191,14 @@ def clean(cps):
     return not (set(cps) & (REMOVED | JOINERS))
 
 
+def keep_positions(a, b, cps):
+    """The positions of the line that hold a code point that rule X9 does
+    not remove. ICU and the crate give a removed code point a different
+    level, so the levels, the order and the text of the other code points
+    are the only parts that both references answer the same way."""
+    return [k for k in range(a, b) if cps[k] not in REMOVED]
+
+
 def expected(case, icu, rust):
     """The answer that the package must give, and the classes of the
     differences that the answer rests on."""
@@ -215,20 +223,14 @@ def expected(case, icu, rust):
     icu_levels = icu.get("D") == 2
     removed = [k for k in range(a, b) if cps[k] in REMOVED]
     ic = [x for x in icu["O"] if cps[x] not in REMOVED]
-    if "crlf" in diffs or rust is None or "L" not in rust:
+    crate = rust is not None and "L" in rust and "O" in rust
+    if "crlf" in diffs or not crate:
         # The crate and ICU split a text with CR LF into paragraphs in
-        # different ways. ICU answers the levels of such a text.
+        # different ways, so only ICU answers such a text.
         if removed:
             # ICU gives a removed code point the level of the next code
             # point. The standard gives it the level of the previous one.
-            # The crate gives the level of the standard. Its answer counts
-            # when it agrees with ICU on the line.
-            if rust is None or "L" not in rust:
-                raise Unexplained("removed code point beside CR LF")
-            if rust["O"] != icu["O"]:
-                raise Unexplained("order differs: icu %s rust %s" % (icu["O"], rust["O"]))
-            if icu_levels and rust["L"] != icu["L"]:
-                raise Unexplained("levels differ: icu %s rust %s" % (icu["L"], rust["L"]))
+            # The line is compared without the removed code points.
             diffs.add("removed")
         src = icu
         exp["L"] = icu["L"] if icu_levels else None
@@ -253,7 +255,12 @@ def expected(case, icu, rust):
     # hold no odd level. The standard reverses such a line.
     if rust is not None and rust.get("PL") and all(x % 2 == 0 for x in rust["PL"]):
         diffs.add("rustline")
-        exp["W"] = {0: icu["W"][0]}
+        if crate and "crlf" not in diffs:
+            # The crate writes the line as it is. The standard reverses
+            # it. The order of the crate is the order of the standard.
+            exp["W"] = {0: [cps[i] for i in rust["O"]]}
+        else:
+            exp["W"] = {0: icu["W"][0]}
         if cps[a] in REMOVED:
             # A removed code point at the start of a line takes the
             # paragraph level in the crate and the level of the code point

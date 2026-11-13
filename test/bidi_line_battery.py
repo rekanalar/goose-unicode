@@ -21,7 +21,12 @@ import ucdlib as u
 
 def compare(case, exp, got):
     """The first difference between the expected answer and the package
-    answer, or None."""
+    answer, or None. The code points that rule X9 removes are left out,
+    because ICU and the crate give them a different level."""
+    name, d, a, b, cps = case
+    keep = lib.keep_positions(a, b, cps)
+    kept = set(keep)
+    dropped = set(range(a, b)) - kept
     if got.get("P") != exp["P"]:
         return "paragraphs: expected %s, got %s" % (exp["P"], got.get("P"))
     if "E" in exp:
@@ -30,14 +35,23 @@ def compare(case, exp, got):
         return None
     if "E" in got:
         return "fault %s" % got["E"]
-    if exp.get("L") is not None and got.get("L") != exp["L"]:
-        return "levels: expected %s, got %s" % (exp["L"], got.get("L"))
-    if got.get("O") != exp["O"]:
+    if exp.get("L") is not None:
+        want = [exp["L"][k - a] for k in keep]
+        gl = got.get("L")
+        have = None if gl is None else [gl[k - a] for k in keep]
+        if have != want:
+            return "levels: expected %s, got %s" % (exp["L"], gl)
+    want = [x for x in exp["O"] if x not in dropped]
+    have = [x for x in got.get("O", []) if x not in dropped]
+    if have != want:
         return "order: expected %s, got %s" % (exp["O"], got.get("O"))
-    for f, want in exp["W"].items():
-        if got.get("W", {}).get(f) != want:
+    for f, text in exp["W"].items():
+        want = [c for c in text if c not in lib.REMOVED]
+        have = [c for c in got.get("W", {}).get(f, []) if c not in lib.REMOVED]
+        if have != want:
             return "text with flags %d: expected %s, got %s" % (
-                f, ["%X" % c for c in want], got.get("W", {}).get(f))
+                f, ["%X" % c for c in text],
+                ["%X" % c for c in got.get("W", {}).get(f, [])])
     return None
 
 
@@ -118,6 +132,8 @@ def main():
             continue
         for d in diffs:
             seen["note:" + d] += 1
+        if exp is None:
+            continue
         why = compare(case, exp, p)
         if why:
             bad[case[0]] += 1
