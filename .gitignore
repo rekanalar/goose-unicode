@@ -13,5 +13,8 @@ test-output.txt
 /tmp/
 /test/oracle/oracle
 
+# The oracle of the collation options
+/test/oracle/csrc/collopt
+
 # Build output of the Rust oracle
 /test/oracle/target/

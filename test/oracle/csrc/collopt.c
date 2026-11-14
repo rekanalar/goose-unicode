@@ -1,11 +1,12 @@
 /* The sign of the comparison of two texts by the ICU collator.
-   Usage: collopt <locale> <strength> <alternate> <numeric> <casefirst>
+   Usage: collopt <locale> <strength> <alternate> <numeric> <casefirst> <caselevel>
    Each text is a line of hex code points, separated by a bar.
    The program prints one sign per line: -1, 0 or 1.
-   The strength: 0 primary, 1 secondary, 2 tertiary, 15 identical.
+   The strength: 0 primary, 1 secondary, 2 tertiary, 3 quaternary, 15 identical.
    The alternate handling: 20 shifted, 21 non-ignorable.
    The numeric order: 16 off, 17 on.
    The case order: 16 off, 24 lower first, 25 upper first.
+   The case level: 0 off, 1 on.
    The build needs the headers and the libraries of ICU 79.1. */
 #include <stdio.h>
 #include <stdlib.h>
@@ -38,6 +39,7 @@ int main(int argc, char **argv) {
     int alternate = argc > 3 ? atoi(argv[3]) : UCOL_NON_IGNORABLE;
     int numeric = argc > 4 ? atoi(argv[4]) : UCOL_OFF;
     int casefirst = argc > 5 ? atoi(argv[5]) : UCOL_OFF;
+    int caselevel = argc > 6 ? atoi(argv[6]) : 0;
     UCollator *c = ucol_open(locale, &st);
     if (U_FAILURE(st)) { printf("E open %d\n", st); return 1; }
     UErrorCode st1 = U_ZERO_ERROR;
@@ -45,6 +47,7 @@ int main(int argc, char **argv) {
     ucol_setAttribute(c, UCOL_ALTERNATE_HANDLING, alternate, &st1);
     ucol_setAttribute(c, UCOL_NUMERIC_COLLATION, numeric, &st1);
     ucol_setAttribute(c, UCOL_CASE_FIRST, casefirst, &st1);
+    ucol_setAttribute(c, UCOL_CASE_LEVEL, caselevel ? UCOL_ON : UCOL_OFF, &st1);
     if (U_FAILURE(st1)) { printf("E attribute %d\n", st1); return 1; }
     char line[1<<20];
     while (fgets(line, sizeof line, stdin)) {

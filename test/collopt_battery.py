@@ -34,6 +34,9 @@ COUNT = 2000
 # The options of Node that match the attributes of ICU, by group name.
 # The strength 15 and the shifted handling have no exact match in Node:
 # ignorePunctuation moves the variable characters to the fourth level.
+# The sensitivity "case" of Node is the primary strength with the case
+# level on. The secondary strength with the case level has no match, so
+# the group stays out of the Node rows.
 NODE = {
     "strength": {"sensitivity": "base"},
     "strength2": {"sensitivity": "accent"},
@@ -45,8 +48,11 @@ NODE = {
     "case": {},
     "case2": {"caseFirst": "lower"},
     "case3": {"caseFirst": "upper"},
+    "caselevel": {"sensitivity": "case"},
+    "caselevel3": {"sensitivity": "variant"},
 }
-RUST_STRENGTH = {0: "primary", 1: "secondary", 2: "tertiary", 15: "identical"}
+RUST_STRENGTH = {0: "primary", 1: "secondary", 2: "tertiary", 3: "quaternary",
+                 15: "identical"}
 RUST_CASE = {16: "off", 24: "lower", 25: "upper"}
 
 
@@ -61,7 +67,7 @@ def node_signs(node_prog, opts, pairs):
     return [sgn(int(x)) for x in r.stdout.split()]
 
 
-def rust_signs(rust_prog, strength, alternate, numeric, case_first, pairs):
+def rust_signs(rust_prog, strength, alternate, numeric, case_first, case_level, pairs):
     out = []
     for i in range(0, len(pairs), 200):
         chunk = pairs[i:i + 200]
@@ -72,7 +78,8 @@ def rust_signs(rust_prog, strength, alternate, numeric, case_first, pairs):
         r = subprocess.run([rust_prog, RUST_STRENGTH[strength],
                             "shifted" if alternate == 20 else "non",
                             "true" if numeric == 17 else "false",
-                            RUST_CASE[case_first], "off", arg],
+                            RUST_CASE[case_first],
+                            "on" if case_level == 1 else "off", arg],
                            capture_output=True, text=True)
         for line in r.stdout.splitlines():
             out.append({"-": -1, "0": 0, "+": 1}[line.split()[0]])
@@ -88,15 +95,16 @@ def main():
     rnd = random.Random(20261114)
     pairs = m.build_pairs(rnd)
     print("%-12s %6s %12s %12s" % ("group", "pairs", "node differs", "rust differs"))
-    for name, strength, alternate, numeric, case_first in m.GROUPS:
-        base = name.rstrip("234")
+    for name, base, strength, alternate, numeric, case_first, case_level in m.GROUPS:
         sample = rnd.sample(pairs[base], COUNT)
-        icu = m.sign(sample, strength, alternate, numeric, case_first, oracle)
+        icu = m.sign(sample, strength, alternate, numeric, case_first, case_level,
+                     oracle)
         nd = "-"
         if name in NODE:
             node = node_signs(node_prog, NODE[name], sample)
             nd = str(sum(1 for a, b in zip(icu, node) if a != b))
-        rust = rust_signs(rust_prog, strength, alternate, numeric, case_first, sample)
+        rust = rust_signs(rust_prog, strength, alternate, numeric, case_first,
+                          case_level, sample)
         rd = str(sum(1 for a, b in zip(icu, rust) if a != b)) if len(rust) == len(icu) else "n/a"
         print("%-12s %6d %12s %12s" % (name, len(sample), nd, rd))
 

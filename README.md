@@ -29,7 +29,7 @@ The tables hold Unicode 18.0.0.
 Add this to the root file of the program that uses it:
 
 ```goose
-import unicode from "rekanalar/goose-unicode@v0.31.0";
+import unicode from "rekanalar/goose-unicode@v0.32.0";
 ```
 
 ## API
@@ -170,8 +170,9 @@ import unicode from "rekanalar/goose-unicode@v0.31.0";
 | `compare_with(out, a, b, opts)` | the sign of the order of two texts under the options |
 | `sort_key_with(out, s, opts)` | the sort key of the text under the options |
 | `coll_options()` | the default options: tertiary strength, non-ignorable variable characters, no numeric order, no case order |
-| `CollOptions` | the struct of the options: the fields `strength`, `alternate`, `numeric` and `case_first`, all `i64` |
-| `STRENGTH_PRIMARY`, `STRENGTH_SECONDARY`, `STRENGTH_TERTIARY`, `STRENGTH_IDENTICAL` | the strength of the options: 0, 1, 2 and 15 |
+| `CollOptions` | the struct of the options: the fields `strength`, `alternate`, `numeric`, `case_first` and `case_level`, all `i64` |
+| `STRENGTH_PRIMARY`, `STRENGTH_SECONDARY`, `STRENGTH_TERTIARY`, `STRENGTH_QUATERNARY`, `STRENGTH_IDENTICAL` | the strength of the options: 0, 1, 2, 3 and 15 |
+| `CASE_LEVEL_OFF`, `CASE_LEVEL_ON` | the values of the field `case_level`: 0 and 1 |
 | `ALT_NON_IGNORABLE`, `ALT_SHIFTED` | the alternate handling of the options: 0 and 1 |
 | `CASE_OFF`, `CASE_LOWER_FIRST`, `CASE_UPPER_FIRST` | the case order of the options: 0, 1 and 2 |
 | `emoji_sequence_kinds(s)` | the mask of the kind of the text, when the whole text is one emoji sequence; 0 otherwise |
@@ -1128,23 +1129,39 @@ The calls `compare_with` and `sort_key_with` take a `CollOptions`
 value. The call `coll_options` gives the default value. The default
 gives the same result as `compare` and `sort_key`.
 
-The struct holds four fields, all of type `i64`.
+The struct holds five fields, all of type `i64`. A caller that builds
+the struct with four values must add the fifth value `case_level`.
 
 | The field | The values | The default | The attribute of ICU |
 |---|---|---|---|
-| `strength` | `STRENGTH_PRIMARY` (0), `STRENGTH_SECONDARY` (1), `STRENGTH_TERTIARY` (2), `STRENGTH_IDENTICAL` (15) | `STRENGTH_TERTIARY` | `UCOL_STRENGTH` |
+| `strength` | `STRENGTH_PRIMARY` (0), `STRENGTH_SECONDARY` (1), `STRENGTH_TERTIARY` (2), `STRENGTH_QUATERNARY` (3), `STRENGTH_IDENTICAL` (15) | `STRENGTH_TERTIARY` | `UCOL_STRENGTH` |
 | `alternate` | `ALT_NON_IGNORABLE` (0), `ALT_SHIFTED` (1) | `ALT_NON_IGNORABLE` | `UCOL_ALTERNATE_HANDLING` |
 | `numeric` | 0 off, 1 on | 0 | `UCOL_NUMERIC_COLLATION` |
 | `case_first` | `CASE_OFF` (0), `CASE_LOWER_FIRST` (1), `CASE_UPPER_FIRST` (2) | `CASE_OFF` | `UCOL_CASE_FIRST` |
+| `case_level` | `CASE_LEVEL_OFF` (0), `CASE_LEVEL_ON` (1) | `CASE_LEVEL_OFF` | `UCOL_CASE_LEVEL` |
 
 A field outside its range gives `ERR_BAD_ARG` and an empty buffer. The
 call checks the options before it reads the text.
 
 The strength keeps the levels up to its value. The primary strength
 ignores the accents and the case. The secondary strength counts the
-accents. The tertiary strength counts the case as well. The identical
-strength adds the code points of the canonical form after the tertiary
-level.
+accents. The tertiary strength counts the case as well. The quaternary
+strength adds a fourth level. The identical strength adds the code
+points of the canonical form after the last level.
+
+The fourth level holds the primary weight of each variable character
+that the shifted handling drops. With the shifted handling "a b"
+sorts before "a-b" at the quaternary strength. The two sort equal at
+the tertiary strength. Under the non-ignorable handling the quaternary
+strength gives the sign of the tertiary strength.
+
+The case level compares the case of each element between the secondary
+level and the tertiary level. It acts at every strength, so "a" sorts
+before "A" at the primary strength with the level on. The level skips
+an element with no primary weight at the primary strength. At the
+higher strengths it skips an element with no secondary weight. The
+weights of the level are 2 for a lower case element and 3 for an upper
+case element. The case order swaps the two weights.
 
 The shifted handling drops the variable characters. A variable
 character is a space, a punctuation or a symbol. The handling drops
@@ -1161,6 +1178,9 @@ do not count. The run "9" sorts before the run "10". The digits of
 every script take part. The number sorts after the variable characters
 and before the letters.
 
+The number takes one weight at the fourth level, as in ICU. It takes no
+weight at the secondary or the tertiary level.
+
 The count of the digits comes first, then the digits. The count has a
 fixed width of seven decimal digits, since the input limit is 1,048,576
 bytes. A run of only zeros gives the number zero, so it sorts equal to
@@ -1169,6 +1189,10 @@ the text "0".
 The case order changes the tertiary level. The upper case first puts
 "A" before "a". The lower case first puts "a" before "A". The order
 off leaves the lower case first, as the root table does.
+
+The upper case class comes from the nine upper case tertiary weights of
+the table. The class agrees with ICU 79.1 for all 39,493 code points of
+the table.
 
 ```goose
 var out: i64[>..] = [];
@@ -1181,15 +1205,35 @@ if code == unicode::OK && out[0] == -1 {
 ```
 
 The options add 0 bytes of data table to the package. Every option
-reads the table that the package already holds. The suite checks 216,664
-distinct texts, which give 583,328 signs, against the ICU library 79.1.
+reads the table that the package already holds. The suite checks 466,664
+distinct texts, which give 1,883,328 signs, against the ICU library 79.1.
+
+The groups cover the case level at each strength. They cover the case
+level with each case order. They cover the quaternary strength under both
+handlings. They cover the identical strength. They cover the whole table.
+They cover the numeric order with the fourth level.
 
 Node 22 and the Rust crate `icu_collator` 2.4.0 agree with the ICU
 library on 2,000 pairs of each option. The script
-`test/collopt_battery.py` prints the counts. Node has no option for the
-identical strength, so it stays out of that row.
+`test/collopt_battery.py` prints the counts. The Rust crate agrees with
+the ICU library on the first 33 groups. The four groups of the numeric
+order with the fourth level have the ICU library as their only oracle.
+
+Node has no option for the identical strength, so it stays out of that
+row. Node has no option for the quaternary strength, so it stays out of
+those rows. Node has no option for the secondary strength with the case
+level, so it stays out of that row too.
 
 ## Limits
+
+- The struct `CollOptions` holds five fields since v0.32.0. It held four
+  fields before. A caller that builds the struct with four values must add
+  the fifth value `case_level`. A caller that uses `coll_options` needs no
+  change.
+
+- The strength 3 is the quaternary strength since v0.32.0. It gave the
+  fault `ERR_BAD_ARG` before. A caller that passed the value 3 needs no
+  change.
 
 - The model engine of the word and line calls covers Thai and Burmese only.
   Lao and Khmer stay on the dictionary, because the package holds no model
@@ -1282,9 +1326,10 @@ identical strength, so it stays out of that row.
 - The case mapping holds the language rules of Turkish, Azerbaijani,
   Lithuanian, Greek, Dutch and Armenian. Any other language gives the root
   mapping. The word segmentation of the title case follows the default rules.
-- The title case starts at the first cased character of a word. ICU starts at
-  the first letter. So `1ij` under `LOCALE_NL` gives `1IJ`, and ICU gives `1ij`.
-  The same difference holds at the root: `1ij` gives `1Ij`.
+- The title case starts at the first cased character of a word, as the Unicode
+  standard says. ICU starts at the first letter, number or symbol. So `1ij`
+  under `LOCALE_NL` gives `1IJ`, and ICU gives `1ij`. Rust gives `1ij` with its
+  default and `1IJ` with the option `ToCased`. Go `x/text` gives `1IJ`.
 - Go `x/text` gives another Greek upper case than ICU for 125 single code
   points. Some of them hold the accented capitals, such as U+0389 and U+0390.
   Node and Rust give the same result as ICU for every single code point that
@@ -1436,9 +1481,6 @@ identical strength, so it stays out of that row.
 - The collation follows the root locale and no tailoring. The tailorings
   by locale stay out. A caller that needs a locale gets the root order
   here.
-- The case level and the quaternary strength stay out. The ICU library
-  and the Rust crate offer them. The root table of CLDR holds no fourth
-  level, and it holds no case bits of ICU.
 - The Han ideographs order by the implicit weights of the algorithm. ICU
   79 and Node order the Han script by the Unihan radical stroke order.
   Go, Rust and the conformance file of the standard follow the implicit
@@ -1537,7 +1579,11 @@ beyond the reference libraries.
   text. A field outside its range gives `ERR_BAD_ARG` and an empty
   buffer. So a bad option cannot make the walk read past the table.
 - The collation calls check the bound of the key after each step of the
-  walk. A run of digits adds its weights to the bound before it writes
+  walk. The bound counts the case level and the fourth level. So a text
+  at the input limit gives `ERR_TOO_LONG` under the quaternary strength
+  with the case level on.
+
+  A run of digits adds its weights to the bound before it writes
   them. A run of 1,048,576 digits gives 1,048,583 weights, and the
   bound holds 4,194,304. The identical strength adds the code points of
   the text to the key. So a text of the input limit gives `ERR_TOO_LONG`.

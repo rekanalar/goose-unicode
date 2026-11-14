@@ -453,8 +453,8 @@ run_probe collopt_numeric_digits collate_opts.goose \
     'for m in k..j { l1.push(COLL_NUM_BASE + coll_digit_value(cps[m])); }' \
     'for m in k..j { l1.push(COLL_NUM_BASE + (9 - coll_digit_value(cps[m]))); }'
 run_probe collopt_case_polarity collate.goose \
-    'if st.case_first == 1 && upper { bit = 1; }' \
-    'if st.case_first == 1 && !upper { bit = 1; }'
+    'if st.case_first == CASE_LOWER_FIRST && upper { bit = 1; }' \
+    'if st.case_first == CASE_LOWER_FIRST && !upper { bit = 1; }'
 run_probe collopt_case_shift collate.goose \
     'return (bit << 5) | t;' \
     'return (bit | t);'
@@ -471,10 +471,10 @@ run_probe collopt_strength_check collate_opts.goose \
     'if s != STRENGTH_PRIMARY && s != STRENGTH_SECONDARY && s != STRENGTH_TERTIARY' \
     'if s != STRENGTH_PRIMARY && s != STRENGTH_SECONDARY && s != STRENGTH_TERTIARY && s != 4'
 run_probe collopt_compare_bound collate_opts.goose \
-    'if coll_over(l1[..], l2[..], l3[..], o.strength, 0)
-            || coll_over(m1[..], m2[..], m3[..], o.strength, 0) {' \
-    'if coll_over(l1[..], l2[..], l3[..], o.strength, 4 * MAX_OUTPUT)
-            || coll_over(m1[..], m2[..], m3[..], o.strength, 4 * MAX_OUTPUT) {'
+    'if coll_over(l1[..], l2[..], l3[..], lc[..], lq[..], o, 0)
+            || coll_over(m1[..], m2[..], m3[..], mc[..], mq[..], o, 0) {' \
+    'if coll_over(l1[..], l2[..], l3[..], lc[..], lq[..], o, 4 * MAX_OUTPUT)
+            || coll_over(m1[..], m2[..], m3[..], mc[..], mq[..], o, 4 * MAX_OUTPUT) {'
 
 # The bound of a numeric run. The run adds its weights to the bound
 # before it writes them, and the walk checks the bound after each step.
@@ -487,8 +487,8 @@ run_probe_pair collopt_no_bound collate_opts.goose \
 # The bound of the key counts the levels up to the strength. The key of
 # the primary strength holds the primary level alone.
 run_probe collopt_strength_bound collate_opts.goose \
-    'if strength >= STRENGTH_SECONDARY { n += l2.len + 1; }' \
-    'if strength >= STRENGTH_SECONDARY { n += l2.len + 1; } n += l2.len;'
+    'if strength >= STRENGTH_SECONDARY { n += l2 + 1; }' \
+    'if strength >= STRENGTH_SECONDARY { n += l2 + 1; } n += l2;'
 
 # The case class of an element. The nine upper case weights decide it.
 # The weight 0x08 holds the upper case letters. The probe takes that bit
@@ -502,6 +502,47 @@ run_probe collopt_case_mask collate.goose \
 run_probe collopt_output_bound collate_opts.goose \
     'return n > MAX_OUTPUT;' \
     'return n > 4 * MAX_OUTPUT;'
+
+# The case level. The weight of a lower case element is 2 and the weight
+# of an upper case element is 3. The probe swaps them, so the case level
+# gives the opposite sign.
+run_probe collopt_case_weight collate.goose \
+    'if upper { return 3; }' \
+    'if upper { return 2; }'
+# The case level skips an element with no secondary weight at the higher
+# strengths. The probe takes that rule out, so the marks join the level.
+run_probe collopt_case_skip collate.goose \
+    'if s != 0 { lc.push(coll_case(st, t)); }' \
+    'lc.push(coll_case(st, t));'
+# The fourth level holds the primary weight of each element that the
+# shifted handling drops. The probe drops that weight, so the fourth
+# level gives the same sign as the tertiary level.
+run_probe collopt_fourth_weight collate.goose \
+    'lq.push(coll_primary(st, p));' \
+    'lq.push(COLL_FOURTH_REGULAR);'
+# The fourth level holds the weight of an element that is not variable.
+# The probe takes that rule out, so the level holds no weight for the
+# elements that the walk keeps.
+run_probe collopt_fourth_regular collate.goose \
+    'lq.push(COLL_FOURTH_REGULAR);' \
+    'lq.push(0);'
+# The case level of the options. The field outside its range gives the
+# fault. The probe accepts every value, so a bad field gives a result.
+run_probe collopt_case_level_check collate_opts.goose \
+    'return o.case_level >= CASE_LEVEL_OFF && o.case_level <= CASE_LEVEL_ON;' \
+    'return true;'
+# The quaternary strength. The value 3 is the quaternary strength. The
+# probe takes it out of the check, so the value gives the fault.
+run_probe collopt_quaternary_check collate_opts.goose \
+    '&& s != STRENGTH_QUATERNARY && s != STRENGTH_IDENTICAL {' \
+    '&& s != STRENGTH_IDENTICAL {'
+
+# A run of digits is one element of the collation, so the fourth level
+# takes one weight for the run. The probe takes that weight out, so the
+# fourth level holds no weight for the run.
+run_probe collopt_numeric_fourth collate_opts.goose \
+    'if st.strength >= STRENGTH_QUATERNARY { lq.push(COLL_FOURTH_REGULAR); }' \
+    'if st.strength >= STRENGTH_QUATERNARY { lq.push(0); }'
 
 echo "$probes probes, $fails failures"
 if [ "$fails" -ne 0 ]; then exit 1; fi

@@ -14,6 +14,7 @@ import std;
 const STRENGTH_PRIMARY: i64 = 0;
 const STRENGTH_SECONDARY: i64 = 1;
 const STRENGTH_TERTIARY: i64 = 2;
+const STRENGTH_QUATERNARY: i64 = 3;
 const STRENGTH_IDENTICAL: i64 = 15;
 
 // The alternate handling of the variable characters.
@@ -25,6 +26,11 @@ const CASE_OFF: i64 = 0;
 const CASE_LOWER_FIRST: i64 = 1;
 const CASE_UPPER_FIRST: i64 = 2;
 
+// The case level. The level compares the case of each element between
+// the secondary level and the tertiary level.
+const CASE_LEVEL_OFF: i64 = 0;
+const CASE_LEVEL_ON: i64 = 1;
+
 // The options of a collation call. A field outside its range gives
 // ERR_BAD_ARG.
 struct CollOptions {
@@ -32,24 +38,26 @@ struct CollOptions {
     alternate: i64,
     numeric: i64,
     case_first: i64,
+    case_level: i64,
 }
 
 // The default options: tertiary strength, non-ignorable variable
 // characters, no numeric order and no case order.
 fn coll_options() -> CollOptions {
-    return CollOptions { STRENGTH_TERTIARY, ALT_NON_IGNORABLE, 0, CASE_OFF };
+    return CollOptions { STRENGTH_TERTIARY, ALT_NON_IGNORABLE, 0, CASE_OFF, CASE_LEVEL_OFF };
 }
 
 // True when every field of o holds a known value.
 fn coll_options_ok(o: CollOptions) -> bool {
     let s = o.strength;
     if s != STRENGTH_PRIMARY && s != STRENGTH_SECONDARY && s != STRENGTH_TERTIARY
-        && s != STRENGTH_IDENTICAL {
+        && s != STRENGTH_QUATERNARY && s != STRENGTH_IDENTICAL {
         return false;
     }
     if o.alternate < ALT_NON_IGNORABLE || o.alternate > ALT_SHIFTED { return false; }
     if o.numeric < 0 || o.numeric > 1 { return false; }
-    return o.case_first >= CASE_OFF && o.case_first <= CASE_UPPER_FIRST;
+    if o.case_first < CASE_OFF || o.case_first > CASE_UPPER_FIRST { return false; }
+    return o.case_level >= CASE_LEVEL_OFF && o.case_level <= CASE_LEVEL_ON;
 }
 
 // Fills the state of a walk from the options.
@@ -57,6 +65,7 @@ fn coll_state(st: CollState&, o: CollOptions) {
     st.alternate = o.alternate;
     st.dropped = 0;
     st.case_first = o.case_first;
+    st.case_level = o.case_level;
     st.numeric = o.numeric;
     st.strength = o.strength;
 }
@@ -82,9 +91,10 @@ fn coll_digit_value(cp: i64) -> i64 {
 // holds the count of the significant digits in seven decimal digits,
 // then one weight per digit. A number with fewer digits is the smaller
 // one, and the digits decide the rest. The number takes no weight at
-// the secondary or the tertiary level, as in ICU. Gives the code points
-// of the run.
-fn coll_numeric(l1: i64[>..]&, l2: const i64[:], l3: const i64[:], st: CollState&, cps: const i64[:], i: i64) -> i64, bool {
+// the secondary or the tertiary level, as in ICU. The fourth level
+// takes one weight for the run, as in ICU. Gives the code points of the
+// run.
+fn coll_numeric(l1: i64[>..]&, l2: const i64[:], l3: const i64[:], lc: const i64[:], lq: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64, bool {
     var j: i64 = i + 1;
     while j < cps.len && coll_is_digit(cps[j]) { j += 1; }
     var k: i64 = i;
@@ -93,8 +103,7 @@ fn coll_numeric(l1: i64[>..]&, l2: const i64[:], l3: const i64[:], st: CollState
     // The run gives seven weights for the count and one weight for each
     // digit. The bound of the key is checked before they are written.
     var n = l1.len + count + 7;
-    if st.strength >= STRENGTH_SECONDARY { n += l2.len + 1; }
-    if st.strength >= STRENGTH_TERTIARY { n += l3.len + 1; }
+    n += coll_levels_len(l2.len, l3.len, lc.len, lq.len, st.strength, st.case_level, 1);
     if n > MAX_OUTPUT { return j - i, true; }
     var scale: i64 = 1000000;
     while scale > 0 {
@@ -102,17 +111,21 @@ fn coll_numeric(l1: i64[>..]&, l2: const i64[:], l3: const i64[:], st: CollState
         scale = scale / 10;
     }
     for m in k..j { l1.push(COLL_NUM_BASE + coll_digit_value(cps[m])); }
+    // The run is one element of the collation, so the fourth level
+    // takes one weight for it. The weight of an element that is not
+    // variable sorts after every primary weight of the table.
+    if st.strength >= STRENGTH_QUATERNARY { lq.push(COLL_FOURTH_REGULAR); }
     st.dropped = 0;
     return j - i, false;
 }
 
 // One step of the walk: a run of digits when the numeric order is on,
 // else the weights of the unit at cps[i]. Gives the code points used.
-fn coll_next(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64, bool {
+fn coll_next(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64, bool {
     if st.numeric == 1 && coll_is_digit(cps[i]) {
-        return coll_numeric(l1, l2[..], l3[..], st, cps, i);
+        return coll_numeric(l1, l2[..], l3[..], lc[..], lq, st, cps, i);
     }
-    return coll_step(l1, l2, l3, st, cps, i), false;
+    return coll_step(l1, l2, l3, lc, lq, st, cps, i), false;
 }
 
 // Decodes s and decomposes it to the canonical form into cps. The
@@ -128,14 +141,26 @@ fn coll_prepare(cps: i64[>..]&, s: const u8[:]) -> i64, i64 {
     return OK, -1;
 }
 
+// The sizes of the levels that the key holds, each with the weight 1
+// that ends the level. The strength and the case level decide which
+// levels the key holds. The fourth level takes one weight more when
+// qextra is 1, for the weight that a step is about to write.
+fn coll_levels_len(l2: i64, l3: i64, lc: i64, lq: i64, strength: i64, case_level: i64, qextra: i64) -> i64 {
+    var n: i64 = 0;
+    if strength >= STRENGTH_SECONDARY { n += l2 + 1; }
+    if case_level == CASE_LEVEL_ON { n += lc + 1; }
+    if strength >= STRENGTH_TERTIARY { n += l3 + 1; }
+    if strength >= STRENGTH_QUATERNARY { n += lq + 1 + qextra; }
+    return n;
+}
+
 // True when the level buffers of one text hold more weights than the
 // bound allows. The key holds the levels up to the strength, so the
 // bound counts those levels only. The extra counts the separators that
 // the key adds to the weights.
-fn coll_over(l1: const i64[:], l2: const i64[:], l3: const i64[:], strength: i64, extra: i64) -> bool {
+fn coll_over(l1: const i64[:], l2: const i64[:], l3: const i64[:], lc: const i64[:], lq: const i64[:], o: CollOptions, extra: i64) -> bool {
     var n = l1.len + extra;
-    if strength >= STRENGTH_SECONDARY { n += l2.len + 1; }
-    if strength >= STRENGTH_TERTIARY { n += l3.len + 1; }
+    n += coll_levels_len(l2.len, l3.len, lc.len, lq.len, o.strength, o.case_level, 0);
     return n > MAX_OUTPUT;
 }
 
@@ -154,22 +179,24 @@ fn sort_key_with(out: i64[>..]&, s: const u8[:], o: CollOptions) -> i64, i64 {
     var cps: i64[>..] = [];
     let code, off = coll_prepare(cps, s);
     if code != OK { return code, off; }
-    var st = CollState { 0, 0, 0, 0, 0 };
+    var st = CollState { 0, 0, 0, 0, 0, 0 };
     coll_state(st, o);
     var l1: i64[>..] = [];
     var l2: i64[>..] = [];
     var l3: i64[>..] = [];
+    var lc: i64[>..] = [];
+    var lq: i64[>..] = [];
     var i: i64 = 0;
     while i < cps.len {
-        let used, over = coll_next(l1, l2, l3, st, cps[..], i);
+        let used, over = coll_next(l1, l2, l3, lc, lq, st, cps[..], i);
         i += used;
         if over { return ERR_TOO_LONG, -1; }
-        if coll_over(l1[..], l2[..], l3[..], o.strength, 3) { return ERR_TOO_LONG, -1; }
+        if coll_over(l1[..], l2[..], l3[..], lc[..], lq[..], o, 3) { return ERR_TOO_LONG, -1; }
     }
     // A text with no weight at any level gives the empty key. The
     // identical strength gives the key of the code points, so a text
     // with code points gives a key even without a weight.
-    if l1.len == 0 && l2.len == 0 && l3.len == 0
+    if l1.len == 0 && l2.len == 0 && l3.len == 0 && lc.len == 0 && lq.len == 0
         && !(o.strength == STRENGTH_IDENTICAL && cps.len > 0) {
         return OK, -1;
     }
@@ -178,9 +205,17 @@ fn sort_key_with(out: i64[>..]&, s: const u8[:], o: CollOptions) -> i64, i64 {
         out.push(1);
         out.append(l2[..]);
     }
+    if o.case_level == CASE_LEVEL_ON {
+        out.push(1);
+        out.append(lc[..]);
+    }
     if o.strength >= STRENGTH_TERTIARY {
         out.push(1);
         out.append(l3[..]);
+    }
+    if o.strength >= STRENGTH_QUATERNARY {
+        out.push(1);
+        out.append(lq[..]);
     }
     if o.strength == STRENGTH_IDENTICAL {
         // The code points of the text join the key. The bound counts
@@ -211,37 +246,45 @@ fn compare_with(out: i64[>..]&, a: const u8[:], b: const u8[:], o: CollOptions) 
     if code != OK { return code, off; }
     let code2, off2 = coll_prepare(cb, b);
     if code2 != OK { return code2, off2; }
-    var sa = CollState { 0, 0, 0, 0, 0 };
-    var sb = CollState { 0, 0, 0, 0, 0 };
+    var sa = CollState { 0, 0, 0, 0, 0, 0 };
+    var sb = CollState { 0, 0, 0, 0, 0, 0 };
     coll_state(sa, o);
     coll_state(sb, o);
     var l1: i64[>..] = [];
     var l2: i64[>..] = [];
     var l3: i64[>..] = [];
+    var lc: i64[>..] = [];
+    var lq: i64[>..] = [];
     var m1: i64[>..] = [];
     var m2: i64[>..] = [];
     var m3: i64[>..] = [];
+    var mc: i64[>..] = [];
+    var mq: i64[>..] = [];
     var s1: i64 = 0;
     var s2: i64 = 0;
+    var sc: i64 = 0;
     var s3: i64 = 0;
+    var sq: i64 = 0;
     var p1: i64 = 0;
     var p2: i64 = 0;
+    var pc: i64 = 0;
     var p3: i64 = 0;
+    var pq: i64 = 0;
     var i: i64 = 0;
     var j: i64 = 0;
     while i < ca.len || j < cb.len {
         if i < ca.len {
-            let used, over = coll_next(l1, l2, l3, sa, ca[..], i);
+            let used, over = coll_next(l1, l2, l3, lc, lq, sa, ca[..], i);
             i += used;
             if over { return ERR_TOO_LONG, -1; }
         }
         if j < cb.len {
-            let used, over = coll_next(m1, m2, m3, sb, cb[..], j);
+            let used, over = coll_next(m1, m2, m3, mc, mq, sb, cb[..], j);
             j += used;
             if over { return ERR_TOO_LONG, -1; }
         }
-        if coll_over(l1[..], l2[..], l3[..], o.strength, 0)
-            || coll_over(m1[..], m2[..], m3[..], o.strength, 0) {
+        if coll_over(l1[..], l2[..], l3[..], lc[..], lq[..], o, 0)
+            || coll_over(m1[..], m2[..], m3[..], mc[..], mq[..], o, 0) {
             return ERR_TOO_LONG, -1;
         }
         if s1 == 0 {
@@ -255,9 +298,17 @@ fn compare_with(out: i64[>..]&, a: const u8[:], b: const u8[:], o: CollOptions) 
             s2 = coll_region_sign(l2[..], m2[..], p2);
             p2 = coll_min(l2.len, m2.len);
         }
+        if sc == 0 && o.case_level == CASE_LEVEL_ON {
+            sc = coll_region_sign(lc[..], mc[..], pc);
+            pc = coll_min(lc.len, mc.len);
+        }
         if s3 == 0 && o.strength >= STRENGTH_TERTIARY {
             s3 = coll_region_sign(l3[..], m3[..], p3);
             p3 = coll_min(l3.len, m3.len);
+        }
+        if sq == 0 && o.strength >= STRENGTH_QUATERNARY {
+            sq = coll_region_sign(lq[..], mq[..], pq);
+            pq = coll_min(lq.len, mq.len);
         }
     }
     var sign: i64 = s1;
@@ -266,9 +317,17 @@ fn compare_with(out: i64[>..]&, a: const u8[:], b: const u8[:], o: CollOptions) 
         sign = s2;
         if sign == 0 { sign = coll_level_sign(l2[..], m2[..]); }
     }
+    if sign == 0 && o.case_level == CASE_LEVEL_ON {
+        sign = sc;
+        if sign == 0 { sign = coll_level_sign(lc[..], mc[..]); }
+    }
     if sign == 0 && o.strength >= STRENGTH_TERTIARY {
         sign = s3;
         if sign == 0 { sign = coll_level_sign(l3[..], m3[..]); }
+    }
+    if sign == 0 && o.strength >= STRENGTH_QUATERNARY {
+        sign = sq;
+        if sign == 0 { sign = coll_level_sign(lq[..], mq[..]); }
     }
     if sign == 0 && o.strength == STRENGTH_IDENTICAL {
         sign = coll_level_sign(ca[..], cb[..]);

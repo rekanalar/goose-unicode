@@ -21,6 +21,28 @@ fn tt_check(text: const u8[:], want: const u8[:], name: const u8[:]) -> i64 {
     return 0;
 }
 
+// The Dutch title case. The first cased character starts the word, as
+// the Unicode standard says. ICU 79.1 starts at the first letter, number
+// or symbol and gives "1ij" for "1ij"; the package gives "1IJ".
+fn tt_dutch(text: const u8[:], want: const u8[:], name: const u8[:]) -> i64 {
+    var out: u8[>..] = [];
+    let code, _ = unicode::to_title_locale(out, text, unicode::LOCALE_NL);
+    if code != unicode::OK || out[..] != want {
+        print("FAIL: title dutch ", name, ", got ", out, "\n");
+        return 1;
+    }
+    return 0;
+}
+
+fn title_dutch() -> i64 {
+    var bad = 0;
+    bad += tt_dutch("1ij", "1IJ", "digit then ij");
+    bad += tt_dutch("ijsland", "IJsland", "ijsland");
+    bad += tt_dutch("a1ij", "A1ij", "letter digit ij");
+    bad += tt_dutch("ij", "IJ", "ij");
+    return bad;
+}
+
 fn title_samples() -> i64 {
     var bad = 0;
     bad += tt_check("hello world", "Hello World", "words");
@@ -175,6 +197,7 @@ fn title_hostile() -> i64 {
 fn run_title() -> i64 {
     var bad = 0;
     if want("title", "title_samples") { bad += title_samples(); }
+    if want("title", "title_dutch") { bad += title_dutch(); }
     if want("title", "title_bad_cp") { bad += title_bad_cp(); }
     if want("title", "title_faults") { bad += title_faults(); }
     if want("title", "title_texts") { bad += title_texts(); }

@@ -44,6 +44,18 @@ fn main() {
     o.strength = unicode::STRENGTH_PRIMARY;
     sign(out, "resume", "résumé", o, "primary strength");
 
+    // The case level: "a" sorts before "A" even at the primary strength.
+    o = unicode::coll_options();
+    o.strength = unicode::STRENGTH_PRIMARY;
+    o.case_level = unicode::CASE_LEVEL_ON;
+    sign(out, "a", "A", o, "case level");
+
+    // The quaternary strength: the dropped hyphen decides the order.
+    o = unicode::coll_options();
+    o.alternate = unicode::ALT_SHIFTED;
+    o.strength = unicode::STRENGTH_QUATERNARY;
+    sign(out, "a b", "a-b", o, "quaternary");
+
     // The default options give the order of the root collation.
     o = unicode::coll_options();
     sign(out, "resume", "résumé", o, "default");

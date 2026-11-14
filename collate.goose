@@ -75,6 +75,7 @@ struct CollState {
     alternate: i64,   // the alternate handling: 0 non-ignorable, 1 shifted
     dropped: i64,     // 1 when the last element dropped out
     case_first: i64,  // the case order: 0 off, 1 lower first, 2 upper first
+    case_level: i64,  // 1 when the case level joins the comparison
     numeric: i64,     // 1 when a run of digits is one number
     strength: i64,    // the strength: the levels that the key holds
 }
@@ -104,31 +105,69 @@ fn coll_primary(st: CollState&, p: i64) -> i64 {
 const COLL_UPPER_MASK: i64 = (1 << 8) | (1 << 9) | (1 << 10) | (1 << 11)
     | (1 << 12) | (1 << 14) | (1 << 17) | (1 << 18) | (1 << 29);
 
+// True when the tertiary weight t belongs to an upper case element.
+// The nine upper case weights of the table decide it.
+fn coll_is_upper(t: i64) -> bool {
+    return (COLL_UPPER_MASK >> t) & 1 == 1;
+}
+
 // A tertiary weight as the walk stores it. The case order puts a case
 // bit above the weight. The nine upper case weights of the table decide
 // the class of an element. The bit sits at the weight 0x20, above every
 // tertiary weight of the table, so the value stays below 0x10000.
 fn coll_tertiary(st: CollState&, t: i64) -> i64 {
-    if st.case_first == 0 { return t; }
-    let upper = (COLL_UPPER_MASK >> t) & 1 == 1;
+    if st.case_first == CASE_OFF { return t; }
+    let upper = coll_is_upper(t);
     var bit: i64 = 0;
-    if st.case_first == 1 && upper { bit = 1; }
-    if st.case_first == 2 && !upper { bit = 1; }
+    if st.case_first == CASE_LOWER_FIRST && upper { bit = 1; }
+    if st.case_first == CASE_UPPER_FIRST && !upper { bit = 1; }
     return (bit << 5) | t;
 }
 
-// Appends the elements of one unit to the three level buffers. A
-// primary of 0000 stays out of the first level. The shifted handling
-// drops a variable element, and the elements without a primary weight
-// that follow it. The caller checks the total bound.
-fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, unit: i64) {
+// The case weight of an element. The weight is 2 for an element that is
+// not upper case and 3 for an upper case element. The nine upper case
+// tertiary weights of the table decide the class. The upper case order
+// swaps the two weights, so the buffer sorts in the same direction
+// under both orders. The weight 1 ends a level of a key, so no weight
+// of the case level holds the value 1.
+fn coll_case(st: CollState&, t: i64) -> i64 {
+    let upper = coll_is_upper(t);
+    if st.case_first == CASE_UPPER_FIRST {
+        if upper { return 2; }
+        return 3;
+    }
+    if upper { return 3; }
+    return 2;
+}
+
+// The weight of an element that is not variable at the fourth level.
+// The weight is the largest primary weight of the table, so a variable
+// element, which holds a smaller primary weight, sorts before it.
+const COLL_FOURTH_REGULAR: i64 = 0xFFFF;
+
+// Appends the elements of one unit to the level buffers. A primary of
+// 0000 stays out of the first level. The shifted handling drops a
+// variable element, and the elements without a primary weight that
+// follow it. The case level takes one weight for each element with a
+// primary weight at the primary strength, and one for each element
+// with a secondary weight at the higher strengths. The fourth level
+// takes the primary weight of each dropped element, and the weight of
+// an element that is not variable. The caller checks the total bound.
+fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, unit: i64) {
     let start = COLL_EOFF[unit];
     let stop = COLL_EOFF[unit + 1];
     for e in start..stop {
         let p = COLL_P[e];
+        let s = COLL_S[e];
+        let t = COLL_T[e];
         if st.alternate == 1 {
             if (p > 0x0200 && p <= COLL_VAR_LAST) || (p == 0 && st.dropped == 1) {
                 st.dropped = 1;
+                // The fourth level holds the primary weight of the
+                // element that the shifted handling drops.
+                if p != 0 && st.strength >= STRENGTH_QUATERNARY {
+                    lq.push(coll_primary(st, p));
+                }
                 continue;
             }
             st.dropped = 0;
@@ -137,9 +176,27 @@ fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&,
         // nothing at a level holds that level back. A level above the
         // strength holds no weight, because the key keeps no level.
         if p != 0 { l1.push(coll_primary(st, p)); }
-        if st.strength >= STRENGTH_SECONDARY && COLL_S[e] != 0 { l2.push(COLL_S[e]); }
-        if st.strength >= STRENGTH_TERTIARY && COLL_T[e] != 0 {
-            l3.push(coll_tertiary(st, COLL_T[e]));
+        if st.strength >= STRENGTH_SECONDARY && s != 0 { l2.push(s); }
+        if st.strength >= STRENGTH_TERTIARY && t != 0 {
+            l3.push(coll_tertiary(st, t));
+        }
+        // The case level skips an element with no primary weight at the
+        // primary strength, and an element with no secondary weight at
+        // the higher strengths. The case weight comes from the tertiary
+        // weight, and the table gives an element a secondary weight
+        // exactly when it gives it a tertiary weight.
+        if st.case_level == CASE_LEVEL_ON {
+            if st.strength >= STRENGTH_SECONDARY {
+                if s != 0 { lc.push(coll_case(st, t)); }
+            } else if p != 0 && (s != 0 || t != 0) {
+                lc.push(coll_case(st, t));
+            }
+        }
+        // The fourth level holds one weight for each element that
+        // carries a weight. The weight of an element that is not
+        // variable is the largest primary weight of the table.
+        if st.strength >= STRENGTH_QUATERNARY && (p != 0 || s != 0 || t != 0) {
+            lq.push(COLL_FOURTH_REGULAR);
         }
     }
 }
@@ -151,13 +208,13 @@ fn coll_unit_levels(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&,
 // plane of the unified ideographs, and the rest the base of the
 // unassigned code points. Each group appends the base with the common
 // secondary and tertiary weights, then the tail as a second primary.
-fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cp: i64) {
+fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, cp: i64) {
     if cp >= 0xAC00 && cp <= 0xD7A3 {
         let s = cp - 0xAC00;
-        coll_jamo(l1, l2, l3, st, 0x1100 + s / 588);
-        coll_jamo(l1, l2, l3, st, 0x1161 + (s % 588) / 28);
+        coll_jamo(l1, l2, l3, lc, lq, st, 0x1100 + s / 588);
+        coll_jamo(l1, l2, l3, lc, lq, st, 0x1161 + (s % 588) / 28);
         let t = s % 28;
-        if t > 0 { coll_jamo(l1, l2, l3, st, 0x11A7 + t); }
+        if t > 0 { coll_jamo(l1, l2, l3, lc, lq, st, 0x11A7 + t); }
         return;
     }
     var aaaa: i64 = 0xFBC0 + (cp >> 15);
@@ -176,24 +233,32 @@ fn coll_implicit(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cp
     if st.strength >= STRENGTH_SECONDARY { l2.push(0x0020); }
     if st.strength >= STRENGTH_TERTIARY { l3.push(coll_tertiary(st, 0x0002)); }
     l1.push(coll_primary(st, bbbb));
+    // The case weight of the common weights is the weight of an
+    // element that is not upper case. The fourth level takes the two
+    // elements of the pair.
+    if st.case_level == CASE_LEVEL_ON { lc.push(coll_case(st, 0x0002)); }
+    if st.strength >= STRENGTH_QUATERNARY {
+        lq.push(COLL_FOURTH_REGULAR);
+        lq.push(COLL_FOURTH_REGULAR);
+    }
 }
 
 // Appends the elements of one Hangul jamo. Every jamo holds a row.
-fn coll_jamo(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, jamo: i64) {
+fn coll_jamo(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, jamo: i64) {
     let unit = coll_single_unit(jamo);
     if unit >= 0 {
-        coll_unit_levels(l1, l2, l3, st, unit);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, unit);
     }
 }
 
 // Appends the weights of one plain code point: its row, or the
 // implicit weights. A skipped mark takes this path.
-fn coll_single(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cp: i64) {
+fn coll_single(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, cp: i64) {
     let single = coll_single_unit(cp);
     if single >= 0 {
-        coll_unit_levels(l1, l2, l3, st, single);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, single);
     } else {
-        coll_implicit(l1, l2, l3, st, cp);
+        coll_implicit(l1, l2, l3, lc, lq, st, cp);
     }
 }
 
@@ -210,12 +275,12 @@ const COLL_MAX_SKIP: i64 = 32;
 // across marks stops at a starter, at the mark cap, and when the
 // combining class of the last skipped mark is not smaller than the
 // class of the next mark.
-fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64 {
+fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, lc: i64[>..]&, lq: i64[>..]&, st: CollState&, cps: const i64[:], i: i64) -> i64 {
     let cp = cps[i];
     let n = cps.len;
     let g = find_exact(COLL_FIRST[..], cp);
     if g < 0 {
-        coll_single(l1, l2, l3, st, cp);
+        coll_single(l1, l2, l3, lc, lq, st, cp);
         return 1;
     }
     var c2: i64 = -1;
@@ -227,13 +292,13 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: c
     var u2: i64 = -1;
     if c3 >= 0 { u2 = coll_find_rec(g, c2, c3); }
     if u2 >= 0 {
-        coll_unit_levels(l1, l2, l3, st, u2);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, u2);
         return 3;
     }
     var u1: i64 = -1;
     if c2 >= 0 { u1 = coll_find_rec(g, c2, -1); }
     if u1 >= 0 && !coll_has_deep(g, c2) {
-        coll_unit_levels(l1, l2, l3, st, u1);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, u1);
         return 2;
     }
     // The discontiguous match: the mark that failed to extend the
@@ -245,19 +310,19 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: c
     var m0: i64 = -1;
     if u1 >= 0 {
         if c3 < 0 || combining_class(c3) == 0 || !coll_trailing_mark(g) {
-            coll_unit_levels(l1, l2, l3, st, u1);
+            coll_unit_levels(l1, l2, l3, lc, lq, st, u1);
             return 2;
         }
         ms = 1;
         m0 = i + 2;
     } else if c2 >= 0 {
         if combining_class(c2) == 0 || !coll_trailing_mark(g) {
-            coll_single(l1, l2, l3, st, cp);
+            coll_single(l1, l2, l3, lc, lq, st, cp);
             return 1;
         }
         m0 = i + 1;
     } else {
-        coll_single(l1, l2, l3, st, cp);
+        coll_single(l1, l2, l3, lc, lq, st, cp);
         return 1;
     }
     var prev = combining_class(cps[m0]);
@@ -292,9 +357,9 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: c
                     skipped = 0;
                     continue;
                 }
-                coll_unit_levels(l1, l2, l3, st, u);
+                coll_unit_levels(l1, l2, l3, lc, lq, st, u);
                 for k in m0..p {
-                    if k != mp { coll_single(l1, l2, l3, st, cps[k]); }
+                    if k != mp { coll_single(l1, l2, l3, lc, lq, st, cps[k]); }
                 }
                 return p + 1 - i;
             }
@@ -304,17 +369,17 @@ fn coll_step(l1: i64[>..]&, l2: i64[>..]&, l3: i64[>..]&, st: CollState&, cps: c
         skipped += 1;
     }
     if ms == 1 {
-        coll_unit_levels(l1, l2, l3, st, u1);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, u1);
         return 2;
     }
     if mp >= 0 {
-        coll_unit_levels(l1, l2, l3, st, mu);
+        coll_unit_levels(l1, l2, l3, lc, lq, st, mu);
         for k in m0..mp {
-            coll_single(l1, l2, l3, st, cps[k]);
+            coll_single(l1, l2, l3, lc, lq, st, cps[k]);
         }
         return mp + 1 - i;
     }
-    coll_single(l1, l2, l3, st, cp);
+    coll_single(l1, l2, l3, lc, lq, st, cp);
     return 1;
 }
 
